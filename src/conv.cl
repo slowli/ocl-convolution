@@ -78,6 +78,9 @@ __kernel void conv(
     __local float results[FILTER_SIZE][FILTER_SIZE];
     results[offset.x][offset.y] = sum;
 
+    // Wait for all workers in the group to submit their results.
+    barrier(CLK_LOCAL_MEM_FENCE);
+
     if ((offset.x == 0) && (offset.y == 0)) {
         float final_sum = 0.0;
         for (size_t o_x = 0; o_x < FILTER_SIZE; o_x++) {

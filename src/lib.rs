@@ -5,7 +5,7 @@ use ocl::{
     Buffer, ProQue,
 };
 
-use std::convert::TryFrom;
+use std::{borrow::Cow, convert::TryFrom};
 
 const SOURCE: &str = include_str!("conv.cl");
 
@@ -21,6 +21,10 @@ impl Convolution {
         let src = format!("#define FILTER_SIZE {}\n{}", size, SOURCE);
         let program = ProQue::builder().src(src).build()?;
         Ok(Self { size, program })
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
     }
 
     pub fn compute(
@@ -50,21 +54,26 @@ impl Convolution {
 
         let program = &self.program;
 
-        // FIXME: handle non-standard layouts by copying the array.
-        let signal_slice = signal.as_slice().unwrap();
+        let signal_slice = signal
+            .as_slice()
+            .map(Cow::Borrowed)
+            .unwrap_or_else(|| Cow::Owned(signal.iter().cloned().collect()));
         let signal_buffer = Buffer::builder()
             .queue(program.queue().clone())
             .len(<[usize; 3]>::try_from(signal.shape()).unwrap())
             .flags(flags::MEM_READ_ONLY)
-            .copy_host_slice(signal_slice)
+            .copy_host_slice(signal_slice.as_ref())
             .build()?;
 
-        let filters_slice = filters.as_slice().unwrap();
+        let filters_slice = filters
+            .as_slice()
+            .map(Cow::Borrowed)
+            .unwrap_or_else(|| Cow::Owned(filters.iter().cloned().collect()));
         let filters_buffer = Buffer::builder()
             .queue(program.queue().clone())
             .len(filters.shape().iter().product::<usize>())
             .flags(flags::MEM_READ_ONLY)
-            .copy_host_slice(filters_slice)
+            .copy_host_slice(filters_slice.as_ref())
             .build()?;
 
         let output_buffer = Buffer::builder()
@@ -235,6 +244,8 @@ mod tests {
         let output = convolution
             .compute(signal.view(), filter.view(), [1, 1], [1; 4])
             .unwrap();
-        assert_eq!(output[[0, 0, 0]], 48.0); // 4 * (0 + 1 + 5 + 6), numbers in the upper left corner.
+
+        assert_eq!(output[[0, 0, 0]], 48.0);
+        // 48 = 4 * (0 + 1 + 5 + 6), numbers in the upper left corner of the image.
     }
 }

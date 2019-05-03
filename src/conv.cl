@@ -24,9 +24,9 @@ uint2 map_to_input(
 
 /// Computes convolution of two tensors.
 ///
-/// - `signal` should have `HxWxC` layout (i.e., the channel dimension are inner-most).
+/// - `signal` should have `HxWxC` layout (i.e., the channel dimension is the inner-most one).
 /// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
-///   `K_H` and `K_W` are spatial dimensions of a filter, `C` are the input channels.
+///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channels.
 ///
 /// The output will have form `MxH'xW'`.
 ///

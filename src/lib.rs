@@ -1,3 +1,5 @@
+//! OpenCL-accelerated 2D convolutions.
+
 use ndarray::{Array3, ArrayView3, ArrayView4};
 use ocl::{
     flags,
@@ -9,6 +11,7 @@ use std::{borrow::Cow, convert::TryFrom};
 
 const SOURCE: &str = include_str!("conv.cl");
 
+/// Convolution of a specific filter size.
 #[derive(Debug)]
 pub struct Convolution {
     size: usize,
@@ -16,17 +19,38 @@ pub struct Convolution {
 }
 
 impl Convolution {
+    /// Creates a convolution with a specific spatial size.
     pub fn new(size: usize) -> ocl::Result<Self> {
         assert_eq!(size % 2, 1, "Even convolution sizes are not supported");
+
         let src = format!("#define FILTER_SIZE {}\n{}", size, SOURCE);
         let program = ProQue::builder().src(src).build()?;
         Ok(Self { size, program })
     }
 
+    /// Spatial size of the convolution.
     pub fn size(&self) -> usize {
         self.size
     }
 
+    /// Performs convolution on the provided `signal` and `filters`.
+    ///
+    /// # Parameters
+    ///
+    /// - `signal` should have `HxWxC` layout (i.e., the channel dimension is the inner-most one).
+    /// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
+    ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channel.
+    ///
+    /// # Return value
+    ///
+    /// The output will have form `MxH'xW'`. An error means something wrong with OpenCL.
+    ///
+    /// # Panics
+    ///
+    /// - The method will panic if `filters` do not have expected spatial dimensions, i.e.,
+    ///   `self.size() x self.size()`.
+    /// - Likewise, the method will panic if the number of input channels differs from number of
+    ///   channels in `filters`.
     pub fn compute(
         &self,
         signal: ArrayView3<f32>,

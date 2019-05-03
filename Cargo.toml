@@ -3,6 +3,8 @@ name = "ocl-conv"
 version = "0.1.0"
 authors = ["Alex Ostrovski <ostrovski.alex@gmail.com>"]
 edition = "2018"
+description = "OpenCL-accelerated 2D convolutions"
+readme = "README.md"
 
 [dependencies]
 ndarray = "0.12.1"

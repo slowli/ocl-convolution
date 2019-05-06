@@ -143,6 +143,7 @@ impl Convolution {
 #[cfg(test)]
 mod tests {
     use ndarray::Array4;
+    use std::f32;
 
     use super::*;
 
@@ -275,7 +276,7 @@ mod tests {
             .compute(signal.view(), filter.view(), [1, 1], [1; 4])
             .unwrap();
 
-        assert_eq!(output[[0, 0, 0]], 48.0);
+        assert!((output[[0, 0, 0]] - 48.0).abs() < f32::EPSILON);
         // 48 = 4 * (0 + 1 + 5 + 6), numbers in the upper left corner of the image.
     }
 }

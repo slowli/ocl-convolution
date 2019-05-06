@@ -3,7 +3,7 @@ use ndarray::{Array3, Array4};
 use rand::{Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
 
-use ocl_conv::Convolution;
+use ocl_convolution::Convolution;
 
 const INPUT_SIZES: &[usize] = &[8, 16, 32, 64, 128, 256];
 const CHANNELS: usize = 32;

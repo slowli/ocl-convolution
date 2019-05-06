@@ -51,8 +51,8 @@ __kernel void conv(
     float sum = 0.0;
     uint2 input_pt = map_to_input((uint2)(x, y), offset, strides, pads, signal_dims.xy);
     if ((input_pt.x != -1) && (input_pt.y != -1)) {
-        // First, we vectorize out `float` channels into 4-value vectors to calculate their
-        // product ~4 times as fast.
+        // First, we vectorize `float` channels into 4-value vectors to calculate
+        // their dot product ~4 times as fast.
         size_t signal_offset =
             input_pt.x * signal_dims.y * signal_dims.z +
             input_pt.y * signal_dims.z;

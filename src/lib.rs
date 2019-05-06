@@ -110,17 +110,23 @@ impl Convolution {
             .kernel_builder("conv")
             .global_work_size([out_h * self.size, out_w * self.size, filter_count])
             .local_work_size([self.size, self.size])
-            .arg(&output_buffer)
-            .arg(&signal_buffer)
-            .arg(Uint3::new(in_h as u32, in_w as u32, in_channels as u32))
-            .arg(&filters_buffer)
-            .arg(Uint2::new(strides[0] as u32, strides[1] as u32))
-            .arg(Uint4::new(
-                pads[0] as u32,
-                pads[1] as u32,
-                pads[2] as u32,
-                pads[3] as u32,
-            ))
+            .arg_named("convolved", &output_buffer)
+            .arg_named("signal", &signal_buffer)
+            .arg_named(
+                "signal_dims",
+                Uint3::new(in_h as u32, in_w as u32, in_channels as u32),
+            )
+            .arg_named("filters", &filters_buffer)
+            .arg_named("strides", Uint2::new(strides[0] as u32, strides[1] as u32))
+            .arg_named(
+                "pads",
+                Uint4::new(
+                    pads[0] as u32,
+                    pads[1] as u32,
+                    pads[2] as u32,
+                    pads[3] as u32,
+                ),
+            )
             .build()?;
 
         unsafe {

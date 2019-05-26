@@ -1,4 +1,32 @@
 //! OpenCL-accelerated 2D convolutions.
+//!
+//! [Convolution] is a fundamental building block in signal processing. This crate is focused
+//! on 2D convolutions (i.e., the signal is a still image) in the context of [deep learning]
+//! (more precisely, [convolutional neural networks][cnn]).
+//! The second requirement means that the convolution filter may contain many (order of hundreds)
+//! filters; and the input may contain many channels (order of hundreds or thousands), rather
+//! than traditional 3 or 4. Computing such convolutions is computationally heavy and can be
+//! effectively accelerated with the help of [OpenCL].
+//!
+//! # Implementation details
+//!
+//! For now, the crate implements convolutions on two numerical formats:
+//!
+//! - Single-precision floats (`f32`) with [`Convolution`]
+//! - Signed 8-bit integers with 32-bit multiply-add accumulator (this format is frequently denoted
+//!   `int8/32` in deep learning literature), with [`I8Convolution`]
+//!
+//! In both cases, the convolution uses output-stationary workflow (see, e.g., [this paper] for
+//! the definition); that is, each element of the output tensor is computed in a single run
+//! of the OpenCL kernel. This minimizes memory overhead, but may not be the fastest algorithm.
+//!
+//! [Convolution]: https://en.wikipedia.org/wiki/Convolution
+//! [deep learning]: https://en.wikipedia.org/wiki/Deep_learning
+//! [cnn]: https://en.wikipedia.org/wiki/Convolutional_neural_network
+//! [OpenCL]: https://www.khronos.org/opencl/
+//! [this paper]: https://dl.acm.org/citation.cfm?id=3001177
+//! [`Convolution`]: struct.Convolution.html
+//! [`I8Convolution`]: struct.I8Convolution.html
 
 use ndarray::{Array3, ArrayView3, ArrayView4};
 use ocl::{
@@ -12,7 +40,37 @@ use std::{borrow::Cow, convert::TryFrom};
 const SOURCE: &str = include_str!("conv.cl");
 const I8_SOURCE: &str = include_str!("i8_conv.cl");
 
-/// Convolution of a specific filter size.
+/// Convolution of a specific filter size on single-precision floats.
+///
+/// # Examples
+///
+/// ```
+/// use ndarray::{Array3, Array4};
+/// use rand::{Rng, thread_rng};
+/// use std::iter;
+/// # use ocl_convolution::Convolution;
+///
+/// # fn main() -> Result<(), ocl::Error> {
+/// let convolution = Convolution::new(3)?;
+/// // Generate random signal with 6x6 spacial dims and 3 channels.
+/// let mut rng = thread_rng();
+/// let mut signal = Array3::zeros([6, 6, 3]);
+/// signal.map_mut(|x| *x = rng.gen_range(-1.0, 1.0));
+/// // Construct two 3x3 spacial filters.
+/// let mut filters = Array4::zeros([2, 3, 3, 3]);
+/// filters.map_mut(|x| *x = rng.gen_range(-1.0, 1.0));
+/// // Perform the convolution. The output should have 4x4 spacial dims
+/// // and contain 2 channels (1 per each filter).
+/// let output = convolution.compute(
+///     signal.view(),
+///     filters.view(),
+///     [1, 1],
+///     [0; 4],
+/// )?;
+/// assert_eq!(output.shape(), [2, 4, 4]);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct Convolution {
     size: usize,

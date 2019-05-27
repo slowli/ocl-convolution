@@ -73,6 +73,8 @@ script:
   - cargo test
   - cargo clean --doc && cargo doc --no-deps && cargo deadlinks --dir target/doc
 
+before_deploy:
+  - cp misc/docroot.html target/doc/index.html
 deploy:
   provider: pages
   local-dir: target/doc

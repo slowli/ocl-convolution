@@ -4,6 +4,9 @@
 [![License: Apache-2.0](https://img.shields.io/github/license/slowli/ocl-convolution.svg)](https://github.com/slowli/ocl-convolution/blob/master/LICENSE)
 ![rust 1.34.0+ required](https://img.shields.io/badge/rust-1.34.0+-blue.svg?label=Required%20Rust) 
 
+**Documentation:**
+[![crate docs (master)](https://img.shields.io/badge/master-yellow.svg?label=docs)](https://slowli.github.io/ocl-convolution/ocl_convolution/) 
+
 This library provides 2D [convolutions] accelerated with [OpenCL]. Convolutions
 are particularly useful for deep learning tasks, such as image recognition;
 they are a basic building block for [convolutional neural networks][cnn].

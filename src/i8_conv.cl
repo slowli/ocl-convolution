@@ -5,6 +5,9 @@
 // #define BIT_SHIFT 8
 
 #define MAX_POINT ((uint2)(-1, -1))
+#ifndef NULL
+#define NULL 0
+#endif
 
 /// Maps the output coordinate to an input one.
 uint2 map_to_input(

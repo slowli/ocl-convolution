@@ -444,42 +444,39 @@ impl<T: ConvElement> Convolution<Pinned<T>> {
 
 #[cfg(test)]
 mod tests {
+    use failure::Error;
     use ndarray::Array4;
     use std::f32;
 
     use super::*;
 
     #[test]
-    fn basics() {
-        let convolution = Convolution::new(3, Params::default()).unwrap();
+    fn basics() -> Result<(), Error> {
+        let convolution = Convolution::new(3, Params::default())?;
         let signal = Array3::from_shape_vec(
             [5, 5, 1],
             vec![
                 0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
                 18., 19., 20., 21., 22., 23., 24.,
             ],
-        )
-        .unwrap();
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.0; 9]).unwrap();
+        )?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.0; 9])?;
 
-        let c = convolution.compute(signal.view(), filter.view()).unwrap();
+        let c = convolution.compute(signal.view(), filter.view())?;
         assert_eq!(
             c,
             Array3::from_shape_vec(
                 [1, 3, 3],
                 vec![54., 63., 72., 99., 108., 117., 144., 153., 162.],
-            )
-            .unwrap(),
+            )?,
         );
+        Ok(())
     }
 
     #[test]
-    fn f32_convolution_with_filters() {
+    fn f32_convolution_with_filters() -> Result<(), Error> {
         let filters = Array4::from_elem([1, 3, 3, 1], 1.0);
-        let convolution = Convolution::new(3, Params::default())
-            .unwrap()
-            .with_filters(filters.view())
-            .unwrap();
+        let convolution = Convolution::new(3, Params::default())?.with_filters(filters.view())?;
 
         let signal = Array3::from_shape_vec(
             [5, 5, 1],
@@ -487,17 +484,15 @@ mod tests {
                 0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
                 18., 19., 20., 21., 22., 23., 24.,
             ],
-        )
-        .unwrap();
+        )?;
 
-        let c = convolution.compute(signal.view()).unwrap();
+        let c = convolution.compute(signal.view())?;
         assert_eq!(
             c,
             Array3::from_shape_vec(
                 [1, 3, 3],
                 vec![54., 63., 72., 99., 108., 117., 144., 153., 162.],
-            )
-            .unwrap(),
+            )?,
         );
 
         for i in 1..=5 {
@@ -505,29 +500,27 @@ mod tests {
             assert!(convolution.compute(signal.view()).is_ok());
         }
 
-        let pinned = convolution.pinned([5, 5, 1]).unwrap();
-        let c = pinned.compute(signal.view()).unwrap();
+        let pinned = convolution.pinned([5, 5, 1])?;
+        let c = pinned.compute(signal.view())?;
         assert_eq!(
             c,
             Array3::from_shape_vec(
                 [1, 3, 3],
                 vec![54., 63., 72., 99., 108., 117., 144., 153., 162.],
-            )
-            .unwrap(),
+            )?,
         );
         for i in 1..=5 {
             let signal = Array3::from_elem([5, 5, 1], i as f32);
             assert!(pinned.compute(signal.view()).is_ok());
         }
+        Ok(())
     }
 
     #[test]
-    fn f32_convolution_with_filters_and_biases() {
+    fn f32_convolution_with_filters_and_biases() -> Result<(), Error> {
         let filters = Array4::from_elem([1, 3, 3, 1], 1.0);
-        let convolution = Convolution::new(3, Params::default())
-            .unwrap()
-            .with_biased_filters(filters.view(), &[-100.0])
-            .unwrap();
+        let convolution = Convolution::new(3, Params::default())?
+            .with_biased_filters(filters.view(), &[-100.0])?;
 
         let signal = Array3::from_shape_vec(
             [5, 5, 1],
@@ -535,22 +528,21 @@ mod tests {
                 0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
                 18., 19., 20., 21., 22., 23., 24.,
             ],
-        )
-        .unwrap();
+        )?;
 
-        let c = convolution.compute(signal.view()).unwrap();
+        let c = convolution.compute(signal.view())?;
         assert_eq!(
             c,
             Array3::from_shape_vec(
                 [1, 3, 3],
                 vec![-46., -37., -28., -1., 8., 17., 44., 53., 62.],
-            )
-            .unwrap(),
+            )?,
         );
+        Ok(())
     }
 
     #[test]
-    fn grouped_convolution() {
+    fn grouped_convolution() -> Result<(), Error> {
         let convolution = Convolution::new(
             3,
             Params {
@@ -559,8 +551,7 @@ mod tests {
                 dilation: [1, 1],
                 groups: 2,
             },
-        )
-        .unwrap();
+        )?;
 
         // All elements on the `i`th channel have value `i`.
         let signal = Array3::from_shape_vec(
@@ -569,8 +560,7 @@ mod tests {
                 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1.,
                 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4.,
             ],
-        )
-        .unwrap();
+        )?;
 
         let filters = Array4::from_shape_vec(
             [2, 3, 3, 2],
@@ -580,24 +570,22 @@ mod tests {
                 // 2nd filter (applied to channels 2..4)
                 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.,
             ],
-        )
-        .unwrap();
-
+        )?;
         let expected_output = Array3::from_shape_vec(
             [2, 1, 1],
             vec![
                 -9.0, // = (1 + 1 + ... + 1) * (1 - 2)
                 63.0, // = (1 + 1 + ... + 1) * (3 + 4)
             ],
-        )
-        .unwrap();
+        )?;
 
-        let output = convolution.compute(signal.view(), filters.view()).unwrap();
+        let output = convolution.compute(signal.view(), filters.view())?;
         assert_eq!(output, expected_output);
+        Ok(())
     }
 
     #[test]
-    fn with_padding() {
+    fn with_padding() -> Result<(), Error> {
         let convolution = Convolution::new(
             3,
             Params {
@@ -606,8 +594,7 @@ mod tests {
                 dilation: [1, 1],
                 groups: 1,
             },
-        )
-        .unwrap();
+        )?;
 
         let signal = Array3::from_shape_vec(
             [5, 5, 1],
@@ -615,11 +602,10 @@ mod tests {
                 0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
                 18., 19., 20., 21., 22., 23., 24.,
             ],
-        )
-        .unwrap();
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.0; 9]).unwrap();
+        )?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.0; 9])?;
 
-        let c = convolution.compute(signal.view(), filter.view()).unwrap();
+        let c = convolution.compute(signal.view(), filter.view())?;
         assert_eq!(
             c,
             Array3::from_shape_vec(
@@ -628,13 +614,13 @@ mod tests {
                     12., 21., 27., 33., 24., 33., 54., 63., 72., 51., 63., 99., 108., 117., 81.,
                     93., 144., 153., 162., 111., 72., 111., 117., 123., 84.,
                 ],
-            )
-            .unwrap(),
+            )?,
         );
+        Ok(())
     }
 
     #[test]
-    fn with_strides() {
+    fn with_strides() -> Result<(), Error> {
         let convolution = Convolution::new(
             3,
             Params {
@@ -643,8 +629,7 @@ mod tests {
                 dilation: [1, 1],
                 groups: 1,
             },
-        )
-        .unwrap();
+        )?;
 
         let signal = Array3::from_shape_vec(
             [7, 5, 1],
@@ -653,22 +638,20 @@ mod tests {
                 18., 19., 20., 21., 22., 23., 24., 25., 26., 27., 28., 29., 30., 31., 32., 33.,
                 34.,
             ],
-        )
-        .unwrap();
-
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.; 9]).unwrap();
-
+        )?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.; 9])?;
         let expected_output =
-            Array3::from_shape_vec([1, 3, 2], vec![54., 72., 144., 162., 234., 252.]).unwrap();
+            Array3::from_shape_vec([1, 3, 2], vec![54., 72., 144., 162., 234., 252.])?;
 
         assert_eq!(
-            convolution.compute(signal.view(), filter.view()).unwrap(),
+            convolution.compute(signal.view(), filter.view())?,
             expected_output
         );
+        Ok(())
     }
 
     #[test]
-    fn with_strides_and_padding() {
+    fn with_strides_and_padding() -> Result<(), Error> {
         let convolution = Convolution::new(
             3,
             Params {
@@ -677,8 +660,7 @@ mod tests {
                 dilation: [1, 1],
                 groups: 1,
             },
-        )
-        .unwrap();
+        )?;
 
         let signal = Array3::from_shape_vec(
             [7, 5, 1],
@@ -687,27 +669,25 @@ mod tests {
                 18., 19., 20., 21., 22., 23., 24., 25., 26., 27., 28., 29., 30., 31., 32., 33.,
                 34.,
             ],
-        )
-        .unwrap();
-
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.; 9]).unwrap();
+        )?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.; 9])?;
 
         let expected_output = Array3::from_shape_vec(
             [1, 4, 3],
             vec![
                 12., 27., 24., 63., 108., 81., 123., 198., 141., 112., 177., 124.,
             ],
-        )
-        .unwrap();
+        )?;
 
         assert_eq!(
-            convolution.compute(signal.view(), filter.view()).unwrap(),
+            convolution.compute(signal.view(), filter.view())?,
             expected_output
         );
+        Ok(())
     }
 
     #[test]
-    fn with_several_input_channels() {
+    fn with_several_input_channels() -> Result<(), Error> {
         let convolution = Convolution::new(
             3,
             Params {
@@ -716,24 +696,23 @@ mod tests {
                 dilation: [1, 1],
                 groups: 1,
             },
-        )
-        .unwrap();
+        )?;
 
         let mut signal = vec![0.0; 100];
         for (i, val) in signal.iter_mut().enumerate() {
             *val = (i / 4) as f32;
         }
-        let signal = Array3::from_shape_vec([5, 5, 4], signal).unwrap();
-
-        let filter = Array4::from_shape_vec([1, 3, 3, 4], vec![1.; 36]).unwrap();
-        let output = convolution.compute(signal.view(), filter.view()).unwrap();
+        let signal = Array3::from_shape_vec([5, 5, 4], signal)?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 4], vec![1.; 36])?;
+        let output = convolution.compute(signal.view(), filter.view())?;
 
         assert!((output[[0, 0, 0]] - 48.0).abs() < f32::EPSILON);
         // 48 = 4 * (0 + 1 + 5 + 6), numbers in the upper left corner of the image.
+        Ok(())
     }
 
     #[test]
-    fn with_dilation() {
+    fn with_dilation() -> Result<(), Error> {
         let convolution = Convolution::new(
             3,
             Params {
@@ -742,8 +721,7 @@ mod tests {
                 groups: 1,
                 dilation: [2, 2],
             },
-        )
-        .unwrap();
+        )?;
 
         let signal = Array3::from_shape_vec(
             [5, 5, 1],
@@ -754,14 +732,13 @@ mod tests {
                 16.0, 17.0, 18.0, 19.0, 20.0, //
                 21.0, 22.0, 23.0, 24.0, 25.0, //
             ],
-        )
-        .unwrap();
+        )?;
         let filters = Array4::from_elem([1, 3, 3, 1], 1.0);
 
         // 117.0 = 1.0 + 3.0 + ... + 25.0
         let expected_output = Array3::from_elem([1, 1, 1], 117.0);
         assert_eq!(
-            convolution.compute(signal.view(), filters.view()).unwrap(),
+            convolution.compute(signal.view(), filters.view())?,
             expected_output
         );
 
@@ -773,8 +750,7 @@ mod tests {
                 groups: 1,
                 dilation: [2, 2],
             },
-        )
-        .unwrap();
+        )?;
 
         let expected_output = Array3::from_shape_vec(
             [1, 3, 3],
@@ -783,16 +759,16 @@ mod tests {
                 78.0, 117.0, 78.0, //
                 52.0, 78.0, 52.0, //
             ],
-        )
-        .unwrap();
+        )?;
         assert_eq!(
-            convolution.compute(signal.view(), filters.view()).unwrap(),
+            convolution.compute(signal.view(), filters.view())?,
             expected_output
         );
+        Ok(())
     }
 
     #[test]
-    fn rounding_in_i8_convolution() {
+    fn rounding_in_i8_convolution() -> Result<(), Error> {
         const BIT_SHIFT: u8 = 8;
         let params = I8Params {
             common: Params::default(),
@@ -802,17 +778,18 @@ mod tests {
             signal_bias: 0,
             filter_bias: 0,
         };
-        let convolution = Convolution::quantized(1, params).unwrap();
-        let signal = Array3::from_shape_vec([2, 3, 1], vec![-7, -6, -5, 5, 6, 7]).unwrap();
-        let filter = Array4::from_shape_vec([1, 1, 1, 1], vec![1]).unwrap();
+        let convolution = Convolution::quantized(1, params)?;
+        let signal = Array3::from_shape_vec([2, 3, 1], vec![-7, -6, -5, 5, 6, 7])?;
+        let filter = Array4::from_shape_vec([1, 1, 1, 1], vec![1])?;
 
-        let output = convolution.compute(signal.view(), filter.view()).unwrap();
-        let expected_output = Array3::from_shape_vec([1, 2, 3], vec![-4, -3, -2, 2, 3, 4]).unwrap();
+        let output = convolution.compute(signal.view(), filter.view())?;
+        let expected_output = Array3::from_shape_vec([1, 2, 3], vec![-4, -3, -2, 2, 3, 4])?;
         assert_eq!(output, expected_output);
+        Ok(())
     }
 
     #[test]
-    fn i8_convolution() {
+    fn i8_convolution() -> Result<(), Error> {
         const BIT_SHIFT: u8 = 8;
         let params = I8Params {
             common: Params::default(),
@@ -822,7 +799,7 @@ mod tests {
             signal_bias: 0,
             filter_bias: 0,
         };
-        let convolution = Convolution::quantized(3, params).unwrap();
+        let convolution = Convolution::quantized(3, params)?;
 
         let signal = vec![
             0, 1, 2, 3, 4, //
@@ -831,17 +808,16 @@ mod tests {
             -5, -6, -7, -8, -9, //
             0, -1, -2, -3, -4, //
         ];
-        let signal = Array3::from_shape_vec([5, 5, 1], signal).unwrap();
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1; 9]).unwrap();
+        let signal = Array3::from_shape_vec([5, 5, 1], signal)?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1; 9])?;
 
         let expected_output = vec![
             54, 63, 72, //
             33, 36, 39, //
             12, 9, 6, //
         ];
-        let expected_output = Array3::from_shape_vec([1, 3, 3], expected_output).unwrap();
-
-        let output = convolution.compute(signal.view(), filter.view()).unwrap();
+        let expected_output = Array3::from_shape_vec([1, 3, 3], expected_output)?;
+        let output = convolution.compute(signal.view(), filter.view())?;
         assert_eq!(output, expected_output);
 
         // Check the same convolution with different scale / bias params.
@@ -851,7 +827,7 @@ mod tests {
             -1, 0, 1, //
             -8, -9, -10, //
         ];
-        let expected_output = Array3::from_shape_vec([1, 3, 3], expected_output).unwrap();
+        let expected_output = Array3::from_shape_vec([1, 3, 3], expected_output)?;
 
         let params = I8Params {
             common: Params::default(),
@@ -861,8 +837,8 @@ mod tests {
             signal_bias: 0,
             filter_bias: 0,
         };
-        let convolution = Convolution::quantized(3, params).unwrap();
-        let output = convolution.compute(signal.view(), filter.view()).unwrap();
+        let convolution = Convolution::quantized(3, params)?;
+        let output = convolution.compute(signal.view(), filter.view())?;
         assert_eq!(output, expected_output);
 
         // Check `filter_bias` / `signal_bias`.
@@ -873,8 +849,8 @@ mod tests {
             -5, -6, -7, -8, -9, //
             0, -1, -2, -3, -4, //
         ];
-        let signal = Array3::from_shape_vec([5, 5, 1], signal).unwrap() - 7;
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![0; 9]).unwrap();
+        let signal = Array3::from_shape_vec([5, 5, 1], signal)? - 7;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![0; 9])?;
 
         let params = I8Params {
             common: Params::default(),
@@ -884,13 +860,14 @@ mod tests {
             bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 1.0 / 3.0),
         };
-        let convolution = Convolution::quantized(3, params).unwrap();
-        let output = convolution.compute(signal.view(), filter.view()).unwrap();
+        let convolution = Convolution::quantized(3, params)?;
+        let output = convolution.compute(signal.view(), filter.view())?;
         assert_eq!(output, expected_output);
+        Ok(())
     }
 
     #[test]
-    fn i8_convolution_with_filter_bias() {
+    fn i8_convolution_with_filter_bias() -> Result<(), Error> {
         const BIT_SHIFT: u8 = 8;
         const MULTIPLIER: i32 = 1 << (BIT_SHIFT as i32);
 
@@ -902,7 +879,7 @@ mod tests {
             signal_bias: 0,
             filter_bias: 0,
         };
-        let convolution = Convolution::quantized(3, params).unwrap();
+        let convolution = Convolution::quantized(3, params)?;
 
         let signal = vec![
             0, 1, 2, 3, 4, //
@@ -911,8 +888,8 @@ mod tests {
             -5, -6, -7, -8, -9, //
             0, -1, -2, -3, -4, //
         ];
-        let signal = Array3::from_shape_vec([5, 5, 1], signal).unwrap();
-        let filter = Array4::from_shape_vec([2, 3, 3, 1], vec![1; 18]).unwrap();
+        let signal = Array3::from_shape_vec([5, 5, 1], signal)?;
+        let filter = Array4::from_shape_vec([2, 3, 3, 1], vec![1; 18])?;
 
         let expected_output = vec![
             // First filter output
@@ -924,7 +901,7 @@ mod tests {
             10, 11, 12, //
             3, 2, 1, //
         ];
-        let expected_output = Array3::from_shape_vec([2, 3, 3], expected_output).unwrap();
+        let expected_output = Array3::from_shape_vec([2, 3, 3], expected_output)?;
 
         let biases = &[-12 * MULTIPLIER, -MULTIPLIER];
         let output = convolution
@@ -933,14 +910,13 @@ mod tests {
         assert_eq!(output, expected_output);
 
         // Check filter pinning.
-        let convolution = convolution
-            .with_biased_filters(filter.view(), biases)
-            .unwrap();
-        let output = convolution.compute(signal.view()).unwrap();
+        let convolution = convolution.with_biased_filters(filter.view(), biases)?;
+        let output = convolution.compute(signal.view())?;
         assert_eq!(output, expected_output);
 
-        let convolution = convolution.pinned([5, 5, 1]).unwrap();
-        let output = convolution.compute(signal.view()).unwrap();
+        let convolution = convolution.pinned([5, 5, 1])?;
+        let output = convolution.compute(signal.view())?;
         assert_eq!(output, expected_output);
+        Ok(())
     }
 }

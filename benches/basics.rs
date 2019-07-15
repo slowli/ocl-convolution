@@ -42,7 +42,7 @@ fn run_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
             let convolution = convolution
                 .with_filters(filters.view())
                 .unwrap()
-                .with_pinned_memory([INPUT_SIZE, INPUT_SIZE, channels])
+                .pinned([INPUT_SIZE, INPUT_SIZE, channels])
                 .unwrap();
             bencher.iter(|| convolution.compute(signal.view()).unwrap())
         }
@@ -86,7 +86,7 @@ fn run_i8_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
             let convolution = convolution
                 .with_filters(filters.view())
                 .unwrap()
-                .with_pinned_memory([INPUT_SIZE, INPUT_SIZE, channels])
+                .pinned([INPUT_SIZE, INPUT_SIZE, channels])
                 .unwrap();
             bencher.iter(|| convolution.compute(signal.view()).unwrap())
         }

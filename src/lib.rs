@@ -27,15 +27,21 @@
 //! [this paper]: https://dl.acm.org/citation.cfm?id=3001177
 //! [`Convolution`]: struct.Convolution.html
 
-use ndarray::{Array3, ArrayView3, ArrayView4};
-use ocl::{
-    builders::KernelBuilder,
-    flags,
-    prm::{Uint2, Uint3, Uint4},
-    Buffer, Context, Kernel, OclPrm, ProQue, Queue,
-};
+#![deny(missing_docs, missing_debug_implementations)]
 
-use std::{borrow::Cow, convert::TryInto};
+use ndarray::{Array3, ArrayView3, ArrayView4};
+use ocl::{prm::Uint3, Buffer, Context, Kernel, OclPrm, ProQue, Queue};
+
+use std::convert::TryInto;
+
+mod buffers;
+mod params;
+
+use crate::{buffers::InputAndOutput, params::ClI8Params};
+pub use crate::{
+    buffers::{Filters, Pinned},
+    params::{I8Params, Params},
+};
 
 const SOURCE: &str = include_str!("conv.cl");
 const I8_SOURCE: &str = include_str!("i8_conv.cl");
@@ -54,40 +60,6 @@ impl ConvElement for i8 {
     type Acc = i32;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Params {
-    pub strides: [usize; 2],
-    pub pads: [usize; 4],
-}
-
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            strides: [1, 1],
-            pads: [0; 4],
-        }
-    }
-}
-
-impl Params {
-    fn pass_as_arguments(self, builder: &mut KernelBuilder) {
-        builder
-            .arg_named(
-                "strides",
-                Uint2::new(self.strides[0] as u32, self.strides[1] as u32),
-            )
-            .arg_named(
-                "pads",
-                Uint4::new(
-                    self.pads[0] as u32,
-                    self.pads[1] as u32,
-                    self.pads[2] as u32,
-                    self.pads[3] as u32,
-                ),
-            );
-    }
-}
-
 /// Convolution of a specific filter size.
 ///
 /// # Memory allocation
@@ -95,13 +67,13 @@ impl Params {
 /// There are three different subtypes of `Convolution<_>` differing in how
 /// the OpenCL buffers are allocated.
 ///
-/// | Type | Filters allocation | Input / output allocation | Transform from preceding type |
-/// |:-----|:-------:|:--------------:|-------|
-/// | `Convolution<T>` | on call | on call | - |
+/// | Type | Filters alloc | Input / output alloc | Transform from preceding type |
+/// |------|---------|----------------|-------|
+/// | `Convolution<T>` | on call | on call | N/A |
 /// | `Convolution<Filters<T>>` | pinned | on call | `with_filters()`, `with_biased_filters()` |
 /// | `Convolution<Pinned<T>>` | pinned | pinned | `pinned()` |
 ///
-/// <small>`T` is a type implementing [`ConvElement`].</small>
+/// In the table, `T` is a type implementing [`ConvElement`] trait.
 ///
 /// Pinning OpenCL buffers makes computations faster, but can lead to out-of-memory errors.
 ///
@@ -122,11 +94,12 @@ impl Params {
 ///     strides: [1, 1],
 ///     pads: [0; 4],
 /// })?;
-/// // Generate random signal with 6x6 spacial dims and 3 channels.
+///
+/// // Generate random signal with 6x6 spatial dims and 3 channels.
 /// let mut rng = thread_rng();
 /// let mut signal = Array3::zeros([6, 6, 3]);
 /// signal.map_mut(|x| *x = rng.gen_range(-1.0, 1.0));
-/// // Construct two 3x3 spacial filters.
+/// // Construct two 3x3 spatial filters.
 /// let mut filters = Array4::zeros([2, 3, 3, 3]);
 /// filters.map_mut(|x| *x = rng.gen_range(-1.0, 1.0));
 /// // Perform the convolution. The output should have 4x4 spatial dims
@@ -136,6 +109,13 @@ impl Params {
 ///     filters.view(),
 /// )?;
 /// assert_eq!(output.shape(), [2, 4, 4]);
+///
+/// // For increased efficiency, we may pin filter memory.
+/// // This is especially useful when the same filters are convolved
+/// // with multiple signals.
+/// let convolution = convolution.with_filters(filters.view())?;
+/// let new_output = convolution.compute(signal.view())?;
+/// assert_eq!(output, new_output);
 /// # Ok(())
 /// # }
 /// ```
@@ -163,14 +143,14 @@ impl Params {
 /// };
 /// let convolution = Convolution::quantized(3, params)?;
 ///
-/// // Generate random signal with 6x6 spacial dims and 3 channels.
+/// // Generate random signal with 6x6 spatial dims and 3 channels.
 /// let mut rng = thread_rng();
 /// let mut signal = Array3::zeros([6, 6, 3]);
 /// signal.map_mut(|x| *x = rng.gen_range(-127, 127));
-/// // Construct two 3x3 spacial filters.
+/// // Construct two 3x3 spatial filters.
 /// let mut filters = Array4::zeros([2, 3, 3, 3]);
 /// filters.map_mut(|x| *x = rng.gen_range(-127, 127));
-/// // Perform the convolution. The output should have 4x4 spacial dims
+/// // Perform the convolution. The output should have 4x4 spatial dims
 /// // and contain 2 channels (1 per each filter).
 /// let output = convolution.compute(
 ///     signal.view(),
@@ -189,152 +169,116 @@ pub struct Convolution<T> {
     context: Context,
 }
 
-#[derive(Debug, Clone)]
-pub struct Filters<T: ConvElement> {
-    inner: Buffer<T>,
-    biases: Option<Buffer<T::Acc>>,
-    filter_count: usize,
-    channel_count: usize,
-}
+impl Convolution<f32> {
+    /// Creates a floating-point convolution with a specific spatial size.
+    pub fn new(size: usize, params: Params) -> ocl::Result<Self> {
+        assert_eq!(size % 2, 1, "Even convolution sizes are not supported");
 
-impl<T: ConvElement> Filters<T> {
-    fn new<U>(
-        filters: ArrayView4<T>,
-        biases: Option<&[T::Acc]>,
-        conv: &Convolution<U>,
-    ) -> ocl::Result<Self> {
-        assert!(
-            filters.shape()[1] == conv.size && filters.shape()[2] == conv.size,
-            "Invalid filter shape"
-        );
-        if let Some(biases) = biases {
-            assert_eq!(
-                filters.shape()[0],
-                biases.len(),
-                "Number of filter biases does not agree with the number of filters"
-            );
-        }
-
-        let filters_slice = filters
-            .as_slice()
-            .map(Cow::Borrowed)
-            .unwrap_or_else(|| Cow::Owned(filters.iter().cloned().collect()));
-        let filters_buffer = Buffer::builder()
-            .queue(conv.queue().clone())
-            .len(filters.shape().iter().product::<usize>())
-            .flags(flags::MEM_READ_ONLY)
-            .copy_host_slice(filters_slice.as_ref())
-            .build()?;
-
-        let filter_biases = biases
-            .map(|biases| {
-                Buffer::builder()
-                    .queue(conv.queue().clone())
-                    .len(biases.len())
-                    .flags(flags::MEM_READ_ONLY)
-                    .copy_host_slice(biases)
-                    .build()
-            })
-            .transpose()?;
-        println!("{:?}", filter_biases);
-
+        let src = format!("#define FILTER_SIZE {}\n{}", size, SOURCE);
+        let program = ProQue::builder().src(src).build()?;
+        let mut kernel_builder = program.kernel_builder("conv");
+        kernel_builder
+            .arg_named("convolved", None::<&Buffer<f32>>)
+            .arg_named("signal", None::<&Buffer<f32>>)
+            .arg_named("signal_dims", Uint3::new(0, 0, 0))
+            .arg_named("filters", None::<&Buffer<f32>>)
+            .arg_named("filter_biases", None::<&Buffer<f32>>);
+        params.pass_as_arguments(&mut kernel_builder);
+        let kernel = kernel_builder.build()?;
         Ok(Self {
-            inner: filters_buffer,
-            biases: filter_biases,
-            filter_count: filters.shape()[0],
-            channel_count: filters.shape()[3],
+            size,
+            params,
+            kernel,
+            buffers: 0.0,
+            context: program.context().clone(),
         })
     }
-
-    fn pass_as_arguments(&self, kernel: &Kernel) -> ocl::Result<()> {
-        kernel.set_arg("filters", &self.inner)?;
-        if let Some(ref biases) = self.biases {
-            kernel.set_arg("filter_biases", biases)?;
-        }
-        Ok(())
-    }
 }
 
-#[derive(Debug, Clone)]
-struct InputAndOutput<T: ConvElement> {
-    signal_buffer: Buffer<T>,
-    signal_dims: Uint3,
-    output_buffer: Buffer<T>,
-    output_dims: [usize; 3],
-}
+/// Quantized convolution over signed 8-bit integers.
+///
+/// Due to use of `i8` inputs, computations are performed much faster than on `f32` inputs
+/// (the difference manifests most on the specialized hardware, but it is seen in this
+/// OpenCL-powered implementation as well).
+///
+/// ## Connection to real-value convolution
+///
+/// Quantized convolution mirrors real-valued convolution in which `i8` elements
+/// of the signal, filter and output tensors represent real-valued numbers with the
+/// following mapping:
+///
+/// ```
+/// let scale: f32 = // ...
+/// # 1.0;
+/// let bias: i32 = // ...
+/// # 0; drop(
+/// |x: i8| -> f32 { scale * (i32::from(x) - bias) as f32 }
+/// # )
+/// ```
+///
+/// `scale` and `bias` may differ for different tensors; these params are usually determined
+/// by *profiling* the corresponding convolutional neural network (see e.g. [this paper]).
+///
+/// Denote these quantiation params for tensor `T` as `T.scale` and `T.bias`. Denote `S`
+/// the signal, `F` the filter, `O` the output. Convolution parameters should be set as follows:
+///
+/// | `I8Params` field | Value     |
+/// |------------------|-----------|
+/// | `signal_bias`    | `-S.bias` |
+/// | `filter_bias`    | `-F.bias` |
+/// | `output_bias`    | `O.bias`  |
+/// | `scale`          | `S.scale * F.scale / O.scale` |
+///
+/// `scale` is represented as a fixed-point number with [`bit_shift`] binary digits after
+/// the point. Note that filter biases `B` are assumed to be unbiased and upscaled; they are
+/// not transformed during the computation.
+///
+/// # Computing convolution
+///
+/// Suppose `S` is the signal and `F` is the filter tensor; both contain `i8` values.
+/// The computation is performed as follows:
+///
+/// 1. Unbias the signal: `S := S + params.signal_bias`.
+/// 2. Unbias the filters: `F := F + params.filter_bias`.
+/// 3. Compute "standard" convolution output `O := S (*) F` using `i32` precision.
+/// 4. Upscale each number in the output: `O := O * params.scale`.
+/// 5. If there is filter bias `B` provided, apply bias to the output per each output channel:
+///    `O[f, ..] := O[f, ..] + B[f]`.
+/// 6. Downscale the output: `O := round(O / 2**self.bit_shift)`,
+///   where `round()` works as floating-point rounding with the default mode
+///   (round to nearest, ties to even).
+/// 7. Apply output bias: `O := O + params.output_bias`.
+/// 8. Saturate output to `i8` range.
+///
+/// [`bit_shift`]: struct.I8Params.html#field.bit_shift
+/// [this paper]: https://arxiv.org/abs/1805.00907
+impl Convolution<i8> {
+    /// Creates a convolution with the specified size and bit shift.
+    pub fn quantized(size: usize, params: I8Params) -> ocl::Result<Self> {
+        assert_eq!(size % 2, 1, "Even convolution sizes are not supported");
 
-impl<T: ConvElement> InputAndOutput<T> {
-    fn new<U>(
-        signal_dims: [usize; 3],
-        filter_count: usize,
-        conv: &Convolution<U>,
-    ) -> ocl::Result<Self> {
-        let [in_h, in_w, in_channels] = signal_dims;
-        let pads = conv.params.pads;
-        let strides = conv.params.strides;
-        let out_h = (in_h - conv.size + pads[0] + pads[2] + strides[0]) / strides[0];
-        let out_w = (in_w - conv.size + pads[1] + pads[3] + strides[1]) / strides[1];
-        let output_dims = [filter_count, out_h, out_w];
-
-        let signal_buffer = Buffer::builder()
-            .queue(conv.queue().clone())
-            .len(signal_dims)
-            .flags(flags::MEM_READ_ONLY)
-            .build()?;
-        let output_buffer = Buffer::builder()
-            .queue(conv.queue().clone())
-            .len(output_dims)
-            .flags(flags::MEM_HOST_READ_ONLY)
-            .build()?;
-
-        let signal_dims = Uint3::new(in_h as u32, in_w as u32, in_channels as u32);
-        Ok(InputAndOutput {
-            signal_buffer,
-            signal_dims,
-            output_buffer,
-            output_dims,
+        let src = format!(
+            "#define FILTER_SIZE {}\n#define BIT_SHIFT {}\n{}",
+            size, params.bit_shift, I8_SOURCE
+        );
+        let program = ProQue::builder().src(src).build()?;
+        let mut kernel_builder = program.kernel_builder("conv");
+        kernel_builder
+            .arg_named("convolved", None::<&Buffer<i8>>)
+            .arg_named("signal", None::<&Buffer<i8>>)
+            .arg_named("signal_dims", Uint3::new(0, 0, 0))
+            .arg_named("filters", None::<&Buffer<i8>>)
+            .arg_named("filter_biases", None::<&Buffer<i32>>)
+            .arg_named("params", ClI8Params::from(params));
+        let kernel = kernel_builder.build()?;
+        Ok(Self {
+            size,
+            params: Params::from(params),
+            kernel,
+            buffers: 0,
+            context: program.context().clone(),
         })
     }
-
-    fn write_signal(&self, signal: ArrayView3<T>) -> ocl::Result<()> {
-        let signal_slice = signal
-            .as_slice()
-            .map(Cow::Borrowed)
-            .unwrap_or_else(|| Cow::Owned(signal.iter().cloned().collect()));
-        self.signal_buffer.write(signal_slice.as_ref()).enq()
-    }
-
-    fn pass_as_arguments(&self, kernel: &Kernel) -> ocl::Result<()> {
-        kernel.set_arg("convolved", &self.output_buffer)?;
-        kernel.set_arg("signal", &self.signal_buffer)?;
-        kernel.set_arg("signal_dims", self.signal_dims)
-    }
-}
-
-impl<T: ConvElement> InputAndOutput<T> {
-    fn execute(&self, kernel: &Kernel, filter_size: usize) -> ocl::Result<Array3<T>> {
-        let [filter_count, out_h, out_w] = self.output_dims;
-        let command = kernel
-            .cmd()
-            .global_work_size([out_h * filter_size, out_w * filter_size, filter_count])
-            .local_work_size([filter_size, filter_size]);
-
-        unsafe {
-            command.enq()?;
-        }
-
-        let mut output_data = vec![T::default(); self.output_buffer.len()];
-        self.output_buffer.read(&mut output_data).enq()?;
-        let output = Array3::from_shape_vec(self.output_dims, output_data).unwrap();
-        Ok(output)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Pinned<T: ConvElement> {
-    filters: Filters<T>,
-    io: InputAndOutput<T>,
-    signal_dims: [usize; 3],
 }
 
 impl<T> Convolution<T> {
@@ -343,14 +287,13 @@ impl<T> Convolution<T> {
             .default_queue()
             .expect("kernel should come with a pre-configured queue")
     }
-}
 
-impl<T> Convolution<T> {
     /// Spatial size of the convolution.
     pub fn size(&self) -> usize {
         self.size
     }
 
+    /// Returns general parameters of the convolution.
     pub fn params(&self) -> Params {
         self.params
     }
@@ -377,18 +320,11 @@ impl<T: ConvElement> Convolution<T> {
         filter_biases: Option<&[T::Acc]>,
     ) -> ocl::Result<Convolution<Filters<T>>> {
         let filters = Filters::new(filters, filter_biases, &self)?;
-        let kernel = self.kernel;
-        kernel.set_arg("filters", &filters.inner)?;
-        if let Some(ref biases) = filters.biases {
-            println!("!!!");
-            kernel.set_arg("filter_biases", biases)?;
-        }
-
         Ok(Convolution {
             buffers: filters,
             size: self.size,
             params: self.params,
-            kernel,
+            kernel: self.kernel,
             context: self.context,
         })
     }
@@ -451,38 +387,11 @@ impl<T: ConvElement> Convolution<T> {
     }
 }
 
-impl Convolution<f32> {
-    /// Creates a convolution with a specific spatial size.
-    pub fn new(size: usize, params: Params) -> ocl::Result<Self> {
-        assert_eq!(size % 2, 1, "Even convolution sizes are not supported");
-
-        let src = format!("#define FILTER_SIZE {}\n{}", size, SOURCE);
-        let program = ProQue::builder().src(src).build()?;
-        let mut kernel_builder = program.kernel_builder("conv");
-        kernel_builder
-            .arg_named("convolved", None::<&Buffer<f32>>)
-            .arg_named("signal", None::<&Buffer<f32>>)
-            .arg_named("signal_dims", Uint3::new(0, 0, 0))
-            .arg_named("filters", None::<&Buffer<f32>>)
-            .arg_named("filter_biases", None::<&Buffer<f32>>);
-        params.pass_as_arguments(&mut kernel_builder);
-        let kernel = kernel_builder.build()?;
-        Ok(Self {
-            size,
-            params,
-            kernel,
-            buffers: 0.0,
-            context: program.context().clone(),
-        })
-    }
-}
-
+/// Convolution with pinned filters / filter biases.
 impl<T: ConvElement> Convolution<Filters<T>> {
-    pub fn with_pinned_memory(
-        self,
-        signal_dims: [usize; 3],
-    ) -> ocl::Result<Convolution<Pinned<T>>> {
-        let io = InputAndOutput::new(signal_dims, self.buffers.filter_count, &self)?;
+    /// Returns convolution with pinned signal and output memory.
+    pub fn pinned(self, signal_dims: [usize; 3]) -> ocl::Result<Convolution<Pinned<T>>> {
+        let io = InputAndOutput::new(signal_dims, self.buffers.filter_count(), &self)?;
         io.pass_as_arguments(&self.kernel)?;
 
         Ok(Convolution {
@@ -498,16 +407,17 @@ impl<T: ConvElement> Convolution<Filters<T>> {
         })
     }
 
+    /// Computes the convolution on the provided signal.
     pub fn compute(&self, signal: ArrayView3<T>) -> ocl::Result<Array3<T>> {
         assert_eq!(
             signal.shape()[2],
-            self.buffers.channel_count,
+            self.buffers.channel_count(),
             "Channel dimensionality in signal and filters must agree"
         );
 
         let io = InputAndOutput::new(
             signal.shape().try_into().unwrap(),
-            self.buffers.filter_count,
+            self.buffers.filter_count(),
             self,
         )?;
         io.write_signal(signal)?;
@@ -516,7 +426,10 @@ impl<T: ConvElement> Convolution<Filters<T>> {
     }
 }
 
+/// Convolution with all buffers (filters / filter biases, signal, output) pinned.
 impl<T: ConvElement> Convolution<Pinned<T>> {
+    /// Computes the convolution on the provided signal. Signal dimensions must agree with
+    /// the ones provided to the `pinned()` constructor.
     pub fn compute(&self, signal: ArrayView3<T>) -> ocl::Result<Array3<T>> {
         assert_eq!(
             signal.shape(),
@@ -526,164 +439,6 @@ impl<T: ConvElement> Convolution<Pinned<T>> {
 
         self.buffers.io.write_signal(signal)?;
         self.buffers.io.execute(&self.kernel, self.size)
-    }
-}
-
-/// Params for the quantized convolution.
-///
-/// See [`Convolution`] docs for details how to set these parameters.
-///
-/// [`Convolution`]: struct.Convolution.html#connection-to-real-value-convolution
-#[derive(Debug, Clone, Copy)]
-pub struct I8Params {
-    /// Strides (spacial distances between sequential application of filters).
-    pub strides: [usize; 2],
-    /// Pads for the signal.
-    pub pads: [usize; 4],
-    /// Upscale bit shift.
-    pub bit_shift: u8,
-    /// Fixed-point scale of the post-convolution transform.
-    pub scale: i32,
-    /// Bias for the post-convolution transform.
-    pub output_bias: i32,
-    /// Bias for the signal.
-    pub signal_bias: i32,
-    /// Bias for the filters.
-    pub filter_bias: i32,
-}
-
-impl From<I8Params> for Params {
-    fn from(value: I8Params) -> Self {
-        Self {
-            strides: value.strides,
-            pads: value.pads,
-        }
-    }
-}
-
-impl I8Params {
-    /// Converts `scale` to fixed-point presentation. The resulting value can be used
-    /// as the `scale` field.
-    pub fn convert_scale(bit_shift: u8, scale: f32) -> i32 {
-        (((1 << i32::from(bit_shift)) as f32) * scale).round() as i32
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-#[repr(C, packed)]
-struct ClI8Params {
-    strides: Uint2,
-    pads: Uint4,
-    scale: i32,
-    output_bias: i32,
-    signal_bias: i32,
-    filter_bias: i32,
-}
-
-impl From<I8Params> for ClI8Params {
-    fn from(value: I8Params) -> Self {
-        ClI8Params {
-            strides: Uint2::new(value.strides[0] as u32, value.strides[1] as u32),
-            pads: Uint4::new(
-                value.pads[0] as u32,
-                value.pads[1] as u32,
-                value.pads[2] as u32,
-                value.pads[3] as u32,
-            ),
-            scale: value.scale,
-            output_bias: value.output_bias,
-            signal_bias: value.signal_bias,
-            filter_bias: value.filter_bias,
-        }
-    }
-}
-
-// Safety ensured by the same alignment here and in OCL code.
-unsafe impl ocl::OclPrm for ClI8Params {}
-
-/// Quantized convolution over signed 8-bit integers with the specified filter size.
-///
-/// ## Connection to real-value convolution
-///
-/// Quantized convolution mirrors real-valued convolution in which `i8` elements
-/// of the signal, filter and output tensors represent real-valued numbers with the
-/// following mapping:
-///
-/// ```
-/// let scale: f32 = // ...
-/// # 1.0;
-/// let bias: i32 = // ...
-/// # 0; drop(
-/// |x: i8| -> f32 { scale * (i32::from(x) - bias) as f32 }
-/// # )
-/// ```
-///
-/// `scale` and `bias` may differ for different tensors; these params are usually determined
-/// by *profiling* the corresponding convolutional neural network (see e.g. [this paper]).
-///
-/// Due to use of `i8` inputs, computations are performed much faster than on `f32` inputs
-/// (the difference manifests most on the specialized hardware, but it is seen in this
-/// OpenCL-powered implementation as well).
-///
-/// Denote these quantiation params for tensor `T` as `T.scale` and `T.bias`. Denote `S`
-/// the signal, `F` the filter, `O` the output. Convolution parameters should be set as follows:
-///
-/// | `I8Params` field | Value     |
-/// |------------------|-----------|
-/// | `signal_bias`    | `-S.bias` |
-/// | `filter_bias`    | `-F.bias` |
-/// | `output_bias`    | `O.bias`  |
-/// | `scale`          | `S.scale * F.scale / O.scale` |
-///
-/// `scale` is represented as a fixed-point number with [`bit_shift()`] binary digits after
-/// the point. Note that filter biases `B` are assumed to be unbiased and upscaled; they are
-/// not transformed during the computation.
-///
-/// # Computing convolution
-///
-/// Suppose `S` is the signal and `F` is the filter tensor; both contain `i8` values.
-/// The computation is performed as follows:
-///
-/// 1. Unbias the signal: `S := S + params.signal_bias`.
-/// 2. Unbias the filters: `F := F + params.filter_bias`.
-/// 3. Compute "standard" convolution output `O := S (*) F` using `i32` precision.
-/// 4. Upscale each number in the output: `O := O * params.scale`.
-/// 5. If there is filter bias `B` provided, apply bias to the output per each output channel:
-///    `O[f, ..] := O[f, ..] + B[f]`.
-/// 6. Downscale the output: `O := round(O / 2**self.bit_shift)`,
-///   where `round()` works as floating-point rounding with the default mode
-///   (round to nearest, ties to even).
-/// 7. Apply output bias: `O := O + params.output_bias`.
-/// 8. Saturate output to `i8` range.
-///
-/// [`bit_shift()`]: #method.bit_shift
-/// [this paper]: https://arxiv.org/abs/1805.00907
-impl Convolution<i8> {
-    /// Creates a convolution with the specified size and bit shift.
-    pub fn quantized(size: usize, params: I8Params) -> ocl::Result<Self> {
-        assert_eq!(size % 2, 1, "Even convolution sizes are not supported");
-
-        let src = format!(
-            "#define FILTER_SIZE {}\n#define BIT_SHIFT {}\n{}",
-            size, params.bit_shift, I8_SOURCE
-        );
-        let program = ProQue::builder().src(src).build()?;
-        let mut kernel_builder = program.kernel_builder("conv");
-        kernel_builder
-            .arg_named("convolved", None::<&Buffer<i8>>)
-            .arg_named("signal", None::<&Buffer<i8>>)
-            .arg_named("signal_dims", Uint3::new(0, 0, 0))
-            .arg_named("filters", None::<&Buffer<i8>>)
-            .arg_named("filter_biases", None::<&Buffer<i32>>)
-            .arg_named("params", ClI8Params::from(params));
-        let kernel = kernel_builder.build()?;
-        Ok(Self {
-            size,
-            params: Params::from(params),
-            kernel,
-            buffers: 0,
-            context: program.context().clone(),
-        })
     }
 }
 
@@ -750,7 +505,7 @@ mod tests {
             assert!(convolution.compute(signal.view()).is_ok());
         }
 
-        let pinned = convolution.with_pinned_memory([5, 5, 1]).unwrap();
+        let pinned = convolution.pinned([5, 5, 1]).unwrap();
         let c = pinned.compute(signal.view()).unwrap();
         assert_eq!(
             c,
@@ -1075,7 +830,7 @@ mod tests {
         let output = convolution.compute(signal.view()).unwrap();
         assert_eq!(output, expected_output);
 
-        let convolution = convolution.with_pinned_memory([5, 5, 1]).unwrap();
+        let convolution = convolution.pinned([5, 5, 1]).unwrap();
         let output = convolution.compute(signal.view()).unwrap();
         assert_eq!(output, expected_output);
     }

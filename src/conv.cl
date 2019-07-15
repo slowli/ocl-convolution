@@ -37,6 +37,7 @@ __kernel void conv(
     __constant float *signal,
     uint3 signal_dims,
     __constant float *filters,
+    __constant float *filter_biases,
     uint2 strides,
     uint4 pads
 ) {
@@ -87,6 +88,9 @@ __kernel void conv(
             for (size_t o_y = 0; o_y < FILTER_SIZE; o_y++) {
                 final_sum += results[o_x][o_y];
             }
+        }
+        if (filter_biases != NULL) {
+            final_sum += filter_biases[filter];
         }
 
         size_t output_offset =

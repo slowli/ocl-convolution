@@ -373,7 +373,7 @@ impl<T: ConvElement> Convolution<T> {
     ) -> ocl::Result<Array3<T>> {
         assert_eq!(
             signal.shape()[2],
-            filters.shape()[3],
+            filters.shape()[3] * self.params.groups,
             "Channel dimensionality in signal and filters must agree"
         );
 
@@ -550,12 +550,59 @@ mod tests {
     }
 
     #[test]
+    fn grouped_convolution() {
+        let convolution = Convolution::new(
+            3,
+            Params {
+                strides: [1, 1],
+                pads: [0; 4],
+                groups: 2,
+            },
+        )
+        .unwrap();
+
+        // All elements on the `i`th channel have value `i`.
+        let signal = Array3::from_shape_vec(
+            [3, 3, 4],
+            vec![
+                1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1.,
+                2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4.,
+            ],
+        )
+        .unwrap();
+
+        let filters = Array4::from_shape_vec(
+            [2, 3, 3, 2],
+            vec![
+                // 1st filter (applied to channels 0..2)
+                1., -1., 1., -1., 1., -1., 1., -1., 1., -1., 1., -1., 1., -1., 1., -1., 1., -1.,
+                // 2nd filter (applied to channels 2..4)
+                1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.,
+            ],
+        )
+        .unwrap();
+
+        let expected_output = Array3::from_shape_vec(
+            [2, 1, 1],
+            vec![
+                -9.0, // = (1 + 1 + ... + 1) * (1 - 2)
+                63.0, // = (1 + 1 + ... + 1) * (3 + 4)
+            ],
+        )
+        .unwrap();
+
+        let output = convolution.compute(signal.view(), filters.view()).unwrap();
+        assert_eq!(output, expected_output);
+    }
+
+    #[test]
     fn with_padding() {
         let convolution = Convolution::new(
             3,
             Params {
                 strides: [1, 1],
                 pads: [1; 4],
+                groups: 1,
             },
         )
         .unwrap();
@@ -591,6 +638,7 @@ mod tests {
             Params {
                 strides: [2, 2],
                 pads: [0; 4],
+                groups: 1,
             },
         )
         .unwrap();
@@ -623,6 +671,7 @@ mod tests {
             Params {
                 strides: [2, 2],
                 pads: [1; 4],
+                groups: 1,
             },
         )
         .unwrap();
@@ -660,6 +709,7 @@ mod tests {
             Params {
                 strides: [1, 1],
                 pads: [1; 4],
+                groups: 1,
             },
         )
         .unwrap();
@@ -683,6 +733,7 @@ mod tests {
         let params = I8Params {
             strides: [1, 1],
             pads: [0; 4],
+            groups: 1,
             bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 0.5),
             output_bias: 0,
@@ -704,6 +755,7 @@ mod tests {
         let params = I8Params {
             strides: [1, 1],
             pads: [0; 4],
+            groups: 1,
             bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 1.0),
             output_bias: 0,
@@ -744,6 +796,7 @@ mod tests {
         let params = I8Params {
             strides: [1, 1],
             pads: [0; 4],
+            groups: 1,
             bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 1.0 / 3.0),
             output_bias: -12,
@@ -768,6 +821,7 @@ mod tests {
         let params = I8Params {
             strides: [1, 1],
             pads: [0; 4],
+            groups: 1,
             output_bias: -12,
             filter_bias: 1,
             signal_bias: 7,
@@ -787,6 +841,7 @@ mod tests {
         let params = I8Params {
             strides: [1, 1],
             pads: [0; 4],
+            groups: 1,
             bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 1.0 / 3.0),
             output_bias: 0,

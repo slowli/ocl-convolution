@@ -13,6 +13,9 @@ pub struct Params {
     /// Pads along spatial dimensions. The first 2 values denote pads at the beginning of
     /// rows / columns, the second 2 values - pads at the end.
     pub pads: [usize; 4],
+    /// Number of groups in the convolution. Each group of filters will be applied to
+    /// a subset of input channels.
+    pub groups: usize,
 }
 
 impl Default for Params {
@@ -20,28 +23,42 @@ impl Default for Params {
         Self {
             strides: [1, 1],
             pads: [0; 4],
+            groups: 1,
         }
     }
 }
 
 impl Params {
     pub(crate) fn pass_as_arguments(self, builder: &mut KernelBuilder) {
-        builder
-            .arg_named(
-                "strides",
-                Uint2::new(self.strides[0] as u32, self.strides[1] as u32),
-            )
-            .arg_named(
-                "pads",
-                Uint4::new(
-                    self.pads[0] as u32,
-                    self.pads[1] as u32,
-                    self.pads[2] as u32,
-                    self.pads[3] as u32,
-                ),
-            );
+        builder.arg_named("params", ClParams::from(self));
     }
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[repr(C, packed)]
+pub struct ClParams {
+    strides: Uint2,
+    pads: Uint4,
+    groups: u32,
+}
+
+impl From<Params> for ClParams {
+    fn from(value: Params) -> Self {
+        ClParams {
+            strides: Uint2::new(value.strides[0] as u32, value.strides[1] as u32),
+            pads: Uint4::new(
+                value.pads[0] as u32,
+                value.pads[1] as u32,
+                value.pads[2] as u32,
+                value.pads[3] as u32,
+            ),
+            groups: value.groups as u32,
+        }
+    }
+}
+
+// Safety ensured by the same alignment here and in OCL code.
+unsafe impl ocl::OclPrm for ClParams {}
 
 /// Params for the quantized convolution.
 ///
@@ -54,6 +71,10 @@ pub struct I8Params {
     pub strides: [usize; 2],
     /// Pads for the signal.
     pub pads: [usize; 4],
+    /// Number of groups in the convolution. Each group of filters will be applied to
+    /// a subset of input channels.
+    pub groups: usize,
+
     /// Upscale bit shift.
     pub bit_shift: u8,
     /// Fixed-point scale of the post-convolution transform.
@@ -71,6 +92,7 @@ impl From<I8Params> for Params {
         Self {
             strides: value.strides,
             pads: value.pads,
+            groups: value.groups,
         }
     }
 }

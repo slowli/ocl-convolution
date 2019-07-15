@@ -56,6 +56,7 @@ fn run_i8_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
     let params = I8Params {
         strides: [1, 1],
         pads: [0; 4],
+        groups: 1,
         bit_shift: BIT_SHIFT,
         scale,
         output_bias: 0,

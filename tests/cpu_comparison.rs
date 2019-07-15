@@ -163,6 +163,7 @@ fn test_grouped_f32_convolution(signal_dims: [usize; 3], filter_dims: [usize; 4]
             strides: [2, 2],
             pads: [1; 4],
             groups,
+            ..Params::default()
         },
     );
 }

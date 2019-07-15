@@ -54,9 +54,7 @@ fn run_i8_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
 
     let scale = I8Params::convert_scale(BIT_SHIFT, (channels as f32).sqrt().recip());
     let params = I8Params {
-        strides: [1, 1],
-        pads: [0; 4],
-        groups: 1,
+        common: Params::default(),
         bit_shift: BIT_SHIFT,
         scale,
         output_bias: 0,

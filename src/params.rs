@@ -16,6 +16,8 @@ pub struct Params {
     /// Number of groups in the convolution. Each group of filters will be applied to
     /// a subset of input channels.
     pub groups: usize,
+    /// Signal dilation along spatial dimensions.
+    pub dilation: [usize; 2],
 }
 
 impl Default for Params {
@@ -24,6 +26,7 @@ impl Default for Params {
             strides: [1, 1],
             pads: [0; 4],
             groups: 1,
+            dilation: [1, 1],
         }
     }
 }
@@ -40,6 +43,7 @@ pub struct ClParams {
     strides: Uint2,
     pads: Uint4,
     groups: u32,
+    dilation: Uint2,
 }
 
 impl From<Params> for ClParams {
@@ -53,6 +57,7 @@ impl From<Params> for ClParams {
                 value.pads[3] as u32,
             ),
             groups: value.groups as u32,
+            dilation: Uint2::new(value.dilation[0] as u32, value.dilation[1] as u32),
         }
     }
 }
@@ -67,14 +72,8 @@ unsafe impl ocl::OclPrm for ClParams {}
 /// [`Convolution`]: struct.Convolution.html#connection-to-real-value-convolution
 #[derive(Debug, Clone, Copy)]
 pub struct I8Params {
-    /// Strides (spacial distances between sequential application of filters).
-    pub strides: [usize; 2],
-    /// Pads for the signal.
-    pub pads: [usize; 4],
-    /// Number of groups in the convolution. Each group of filters will be applied to
-    /// a subset of input channels.
-    pub groups: usize,
-
+    /// Common parameters.
+    pub common: Params,
     /// Upscale bit shift.
     pub bit_shift: u8,
     /// Fixed-point scale of the post-convolution transform.
@@ -89,11 +88,7 @@ pub struct I8Params {
 
 impl From<I8Params> for Params {
     fn from(value: I8Params) -> Self {
-        Self {
-            strides: value.strides,
-            pads: value.pads,
-            groups: value.groups,
-        }
+        value.common
     }
 }
 
@@ -118,14 +113,10 @@ pub struct ClI8Params {
 
 impl From<I8Params> for ClI8Params {
     fn from(value: I8Params) -> Self {
+        let common_params = ClParams::from(value.common);
         ClI8Params {
-            strides: Uint2::new(value.strides[0] as u32, value.strides[1] as u32),
-            pads: Uint4::new(
-                value.pads[0] as u32,
-                value.pads[1] as u32,
-                value.pads[2] as u32,
-                value.pads[3] as u32,
-            ),
+            strides: common_params.strides,
+            pads: common_params.pads,
             scale: value.scale,
             output_bias: value.output_bias,
             signal_bias: value.signal_bias,

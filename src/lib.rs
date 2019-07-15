@@ -556,6 +556,7 @@ mod tests {
             Params {
                 strides: [1, 1],
                 pads: [0; 4],
+                dilation: [1, 1],
                 groups: 2,
             },
         )
@@ -602,6 +603,7 @@ mod tests {
             Params {
                 strides: [1, 1],
                 pads: [1; 4],
+                dilation: [1, 1],
                 groups: 1,
             },
         )
@@ -638,6 +640,7 @@ mod tests {
             Params {
                 strides: [2, 2],
                 pads: [0; 4],
+                dilation: [1, 1],
                 groups: 1,
             },
         )
@@ -671,6 +674,7 @@ mod tests {
             Params {
                 strides: [2, 2],
                 pads: [1; 4],
+                dilation: [1, 1],
                 groups: 1,
             },
         )
@@ -709,6 +713,7 @@ mod tests {
             Params {
                 strides: [1, 1],
                 pads: [1; 4],
+                dilation: [1, 1],
                 groups: 1,
             },
         )
@@ -728,12 +733,69 @@ mod tests {
     }
 
     #[test]
+    fn with_dilation() {
+        let convolution = Convolution::new(
+            3,
+            Params {
+                strides: [1, 1],
+                pads: [0; 4],
+                groups: 1,
+                dilation: [2, 2],
+            },
+        )
+        .unwrap();
+
+        let signal = Array3::from_shape_vec(
+            [5, 5, 1],
+            vec![
+                1.0, 2.0, 3.0, 4.0, 5.0, //
+                6.0, 7.0, 8.0, 9.0, 10.0, //
+                11.0, 12.0, 13.0, 14.0, 15.0, //
+                16.0, 17.0, 18.0, 19.0, 20.0, //
+                21.0, 22.0, 23.0, 24.0, 25.0, //
+            ],
+        )
+        .unwrap();
+        let filters = Array4::from_elem([1, 3, 3, 1], 1.0);
+
+        // 117.0 = 1.0 + 3.0 + ... + 25.0
+        let expected_output = Array3::from_elem([1, 1, 1], 117.0);
+        assert_eq!(
+            convolution.compute(signal.view(), filters.view()).unwrap(),
+            expected_output
+        );
+
+        let convolution = Convolution::new(
+            3,
+            Params {
+                strides: [1, 1],
+                pads: [1; 4],
+                groups: 1,
+                dilation: [2, 2],
+            },
+        )
+        .unwrap();
+
+        let expected_output = Array3::from_shape_vec(
+            [1, 3, 3],
+            vec![
+                52.0, 78.0, 52.0, //
+                78.0, 117.0, 78.0, //
+                52.0, 78.0, 52.0, //
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            convolution.compute(signal.view(), filters.view()).unwrap(),
+            expected_output
+        );
+    }
+
+    #[test]
     fn rounding_in_i8_convolution() {
         const BIT_SHIFT: u8 = 8;
         let params = I8Params {
-            strides: [1, 1],
-            pads: [0; 4],
-            groups: 1,
+            common: Params::default(),
             bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 0.5),
             output_bias: 0,
@@ -753,9 +815,7 @@ mod tests {
     fn i8_convolution() {
         const BIT_SHIFT: u8 = 8;
         let params = I8Params {
-            strides: [1, 1],
-            pads: [0; 4],
-            groups: 1,
+            common: Params::default(),
             bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 1.0),
             output_bias: 0,
@@ -794,9 +854,7 @@ mod tests {
         let expected_output = Array3::from_shape_vec([1, 3, 3], expected_output).unwrap();
 
         let params = I8Params {
-            strides: [1, 1],
-            pads: [0; 4],
-            groups: 1,
+            common: Params::default(),
             bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 1.0 / 3.0),
             output_bias: -12,
@@ -819,9 +877,7 @@ mod tests {
         let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![0; 9]).unwrap();
 
         let params = I8Params {
-            strides: [1, 1],
-            pads: [0; 4],
-            groups: 1,
+            common: Params::default(),
             output_bias: -12,
             filter_bias: 1,
             signal_bias: 7,
@@ -839,9 +895,7 @@ mod tests {
         const MULTIPLIER: i32 = 1 << (BIT_SHIFT as i32);
 
         let params = I8Params {
-            strides: [1, 1],
-            pads: [0; 4],
-            groups: 1,
+            common: Params::default(),
             bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 1.0 / 3.0),
             output_bias: 0,

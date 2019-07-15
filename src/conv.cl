@@ -5,10 +5,11 @@ uint2 map_to_input(
     uint2 output_pt,
     uint2 offsets,
     uint2 strides,
+    uint2 dilation,
     uint4 pads,
     uint2 signal_dims
 ) {
-    uint2 without_pads = output_pt * strides + offsets;
+    uint2 without_pads = output_pt * strides + offsets * dilation;
 
     if ((without_pads.x < pads.x) || (without_pads.y < pads.y)) {
         return MAX_POINT;
@@ -26,6 +27,7 @@ struct __attribute__((packed)) Params {
     uint2 strides;
     uint4 pads;
     uint groups;
+    uint2 dilation;
 };
 
 /// Computes convolution of two tensors.
@@ -61,9 +63,11 @@ __kernel void conv(
         (uint2)(x, y),
         offset,
         params.strides,
+        params.dilation,
         params.pads,
         signal_dims.xy
     );
+
     if ((input_pt.x != -1) && (input_pt.y != -1)) {
         size_t signal_offset =
             input_pt.x * signal_dims.y * signal_dims.z +

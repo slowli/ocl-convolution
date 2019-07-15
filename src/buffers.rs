@@ -104,8 +104,11 @@ impl<T: ConvElement> InputAndOutput<T> {
         let [in_h, in_w, in_channels] = signal_dims;
         let pads = conv.params.pads;
         let strides = conv.params.strides;
-        let out_h = (in_h - conv.size + pads[0] + pads[2] + strides[0]) / strides[0];
-        let out_w = (in_w - conv.size + pads[1] + pads[3] + strides[1]) / strides[1];
+        let dilation = conv.params.dilation;
+        let effective_kernel_h = conv.size + (dilation[0] - 1) * (conv.size - 1);
+        let out_h = (in_h - effective_kernel_h + pads[0] + pads[2]) / strides[0] + 1;
+        let effective_kernel_w = conv.size + (dilation[1] - 1) * (conv.size - 1);
+        let out_w = (in_w - effective_kernel_w + pads[1] + pads[3]) / strides[1] + 1;
         let output_dims = [filter_count, out_h, out_w];
 
         let signal_buffer = Buffer::builder()

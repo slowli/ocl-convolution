@@ -523,6 +523,8 @@ impl<T: ConvElement + WithParams> Convolution<Pinned<T>> {
 #[cfg(test)]
 mod tests {
     use failure::Error;
+    use ndarray::Axis;
+    use rand::{thread_rng, Rng};
     use std::f32;
 
     use super::*;
@@ -1007,6 +1009,48 @@ mod tests {
         })?;
         let output = convolution.compute(signal)?;
         assert_eq!(output, expected_output);
+        Ok(())
+    }
+
+    #[test]
+    fn f32_batching() -> Result<(), Error> {
+        use ndarray::{s, stack};
+
+        let mut rng = thread_rng();
+        let conv = Convolution::f32(3)?.build(Params::default())?;
+        let filters = Array4::from_shape_fn([2, 3, 3, 4], |_| rng.gen_range(-1.0, 1.0));
+        let conv = conv.with_filters(&filters)?;
+
+        for batch_size in 2..8 {
+            // Test both NHWC and NCHW layouts
+            let signal_shape = if batch_size % 2 == 0 {
+                [batch_size, 5, 5, 4]
+            } else {
+                [batch_size, 4, 5, 5]
+            };
+            let to_map = if batch_size % 2 == 0 {
+                FeatureMap::nhwc
+            } else {
+                FeatureMap::nchw
+            };
+
+            let signal = Array4::from_shape_fn(signal_shape, |_| rng.gen_range(-1.0, 1.0));
+            let batched_output = conv.compute(to_map(signal.view()))?;
+
+            let sample_outputs: Vec<_> = (0..batch_size)
+                .map(|i| {
+                    let sample_signal = signal.slice(s![i..(i + 1), .., .., ..]);
+                    conv.compute(to_map(sample_signal))
+                })
+                .collect::<Result<_, _>>()?;
+            let sample_outputs: Vec<_> = sample_outputs.iter().map(Array4::view).collect();
+            let stitched_output = stack(Axis(0), &sample_outputs)?;
+
+            let max_diff = (batched_output - stitched_output)
+                .mapv(f32::abs)
+                .fold(0.0, |acc, &x| if x > acc { x } else { acc });
+            assert!(max_diff < f32::EPSILON);
+        }
         Ok(())
     }
 }

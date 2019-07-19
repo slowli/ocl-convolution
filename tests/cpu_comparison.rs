@@ -1,16 +1,18 @@
 //! Comparison with the CPU convolution implementation.
 
-use ndarray::{Array1, Array3, Array4, ArrayView3, ArrayView4, Axis};
+use ndarray::{Array1, Array3, Array4, ArrayView3, ArrayView4, Axis, LinalgScalar};
 use rand::{thread_rng, Rng};
 
-use ocl_convolution::{Convolution, FeatureMap, Params};
+use std::{cmp, ops};
 
-fn slow_compute(
-    signal: ArrayView3<f32>,
-    filters: ArrayView4<f32>,
-    bias: Option<&[f32]>,
+use ocl_convolution::{Convolution, FeatureMap, I8Params, Params};
+
+fn slow_compute<T: LinalgScalar + ops::AddAssign>(
+    signal: ArrayView3<T>,
+    filters: ArrayView4<T>,
+    bias: Option<&[T]>,
     params: Params,
-) -> Array3<f32> {
+) -> Array3<T> {
     let (input_h, input_w) = (signal.shape()[0], signal.shape()[1]);
     let kernel_size = filters.shape()[1];
     assert_eq!(kernel_size, filters.shape()[2]);
@@ -148,9 +150,16 @@ fn f32_convolution_medium() {
 }
 
 #[test]
+fn f32_non_square_convolution() {
+    const FILTER_DIMS: [usize; 4] = [4, 3, 3, 4];
+    test_f32_convolution([7, 5, 4], FILTER_DIMS);
+    test_f32_convolution([5, 7, 4], FILTER_DIMS);
+}
+
+#[test]
 fn f32_convolution_on_small_number_of_channels() {
-    for channels in 1..=20 {
-        test_f32_convolution([7, 7, channels], [1, 3, 3, channels]);
+    for channels in (1..=8).chain(vec![10, 13, 16, 17]) {
+        test_f32_convolution([5, 5, channels], [1, 3, 3, channels]);
     }
 }
 
@@ -239,4 +248,121 @@ fn f32_dilated_convolution_medium() {
     const SIGNAL_DIMS: [usize; 3] = [28, 28, 32];
     const FILTER_DIMS: [usize; 4] = [10, 3, 3, 32];
     test_dilated_f32_convolution(SIGNAL_DIMS, FILTER_DIMS, 2);
+}
+
+fn downscale(x: i32, shift: i32) -> i8 {
+    let mask = (1 << shift) - 1;
+    let threshold = 1 << (shift - 1);
+    let mut downscaled = x >> shift;
+    let remainder = x & mask;
+    if remainder > threshold || (remainder == threshold && downscaled & 1 == 1) {
+        downscaled += 1;
+    }
+    cmp::max(-128, cmp::min(127, downscaled)) as i8
+}
+
+fn compare_i8_convolution(signal_dims: [usize; 3], filter_dims: [usize; 4], params: Params) {
+    let mut rng = thread_rng();
+    let signal = Array3::from_shape_fn(signal_dims, |_| rng.gen_range(-127_i8, 127));
+    let filter = Array4::from_shape_fn(filter_dims, |_| rng.gen_range(-127_i8, 127));
+    let cpu_output = slow_compute(
+        signal.mapv(i32::from).view(),
+        filter.mapv(i32::from).view(),
+        None,
+        params,
+    )
+    .mapv(|x| downscale(x, 8));
+
+    let convolution = Convolution::i8(filter_dims[1])
+        .unwrap()
+        .build(I8Params {
+            common: params,
+            bit_shift: 14,
+            scale: 1 << 6, // corresponds to 1/256
+            output_bias: 0,
+            signal_bias: 0,
+            filter_bias: 0,
+        })
+        .unwrap();
+    let signal = FeatureMap::nhwc(signal.view().insert_axis(Axis(0)));
+    let cl_output = convolution
+        .compute(signal, &filter)
+        .unwrap()
+        .index_axis_move(Axis(0), 0);
+
+    if cl_output != cpu_output {
+        let index = (cl_output.clone() - cpu_output.clone())
+            .indexed_iter()
+            .filter_map(|(i, &x)| if x != 0 { Some(i) } else { None })
+            .next()
+            .unwrap();
+        panic!("cl={}, cpu={}, index={:?}", cl_output, cpu_output, index);
+    }
+}
+
+fn test_i8_convolution(signal_dims: [usize; 3], filter_dims: [usize; 4]) {
+    compare_i8_convolution(signal_dims, filter_dims, Params::default());
+
+    compare_i8_convolution(
+        signal_dims,
+        filter_dims,
+        Params {
+            pads: [1; 4],
+            ..Params::default()
+        },
+    );
+    compare_i8_convolution(
+        signal_dims,
+        filter_dims,
+        Params {
+            pads: [2; 4],
+            ..Params::default()
+        },
+    );
+
+    compare_i8_convolution(
+        signal_dims,
+        filter_dims,
+        Params {
+            strides: [2, 2],
+            ..Params::default()
+        },
+    );
+    compare_i8_convolution(
+        signal_dims,
+        filter_dims,
+        Params {
+            strides: [2, 2],
+            pads: [1; 4],
+            ..Params::default()
+        },
+    );
+}
+
+#[test]
+fn i8_convolution_small() {
+    const SIGNAL_DIMS: [usize; 3] = [5, 5, 4];
+    const FILTER_DIMS: [usize; 4] = [4, 3, 3, 4];
+    test_i8_convolution(SIGNAL_DIMS, FILTER_DIMS);
+}
+
+#[test]
+fn i8_convolution_medium() {
+    const SIGNAL_DIMS: [usize; 3] = [17, 17, 32];
+    const FILTER_DIMS: [usize; 4] = [10, 3, 3, 32];
+    test_i8_convolution(SIGNAL_DIMS, FILTER_DIMS);
+}
+
+#[test]
+fn i8_non_square_convolution() {
+    const FILTER_DIMS: [usize; 4] = [4, 3, 3, 4];
+    test_i8_convolution([7, 5, 4], FILTER_DIMS);
+    test_i8_convolution([5, 7, 4], FILTER_DIMS);
+}
+
+#[test]
+fn i8_convolution_on_small_number_of_channels() {
+    for channels in (1..=8).chain(vec![10, 13, 16, 17]) {
+        test_i8_convolution([5, 5, channels], [1, 3, 3, channels]);
+    }
 }

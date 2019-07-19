@@ -3,7 +3,10 @@
 use ocl::{
     builders::KernelBuilder,
     prm::{Uint2, Uint4},
+    OclPrm,
 };
+
+use crate::{ConvElement, Filters, Pinned};
 
 /// General convolution parameters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -63,7 +66,7 @@ impl From<Params> for ClParams {
 }
 
 // Safety ensured by the same alignment here and in OCL code.
-unsafe impl ocl::OclPrm for ClParams {}
+unsafe impl OclPrm for ClParams {}
 
 /// Params for the quantized convolution.
 ///
@@ -105,6 +108,9 @@ impl I8Params {
 pub struct ClI8Params {
     strides: Uint2,
     pads: Uint4,
+    group: u32,
+    dilation: Uint2,
+    bit_shift: i32,
     scale: i32,
     output_bias: i32,
     signal_bias: i32,
@@ -117,6 +123,9 @@ impl From<I8Params> for ClI8Params {
         ClI8Params {
             strides: common_params.strides,
             pads: common_params.pads,
+            group: common_params.groups,
+            dilation: common_params.dilation,
+            bit_shift: i32::from(value.bit_shift),
             scale: value.scale,
             output_bias: value.output_bias,
             signal_bias: value.signal_bias,
@@ -126,4 +135,51 @@ impl From<I8Params> for ClI8Params {
 }
 
 // Safety ensured by the same alignment here and in OCL code.
-unsafe impl ocl::OclPrm for ClI8Params {}
+unsafe impl OclPrm for ClI8Params {}
+
+/// Type that can be associated with convolution parameters.
+pub trait WithParams {
+    /// Parameters of the convolution.
+    type Params: Clone + Into<Self::ClParams>;
+    /// OpenCL-friendly version of parameters.
+    type ClParams: OclPrm;
+
+    /// Extracts generic parameters.
+    fn get_generic_params(params: &Self::Params) -> Params;
+}
+
+impl WithParams for f32 {
+    type Params = Params;
+    type ClParams = ClParams;
+
+    fn get_generic_params(params: &Self::Params) -> Params {
+        *params
+    }
+}
+
+impl WithParams for i8 {
+    type Params = I8Params;
+    type ClParams = ClI8Params;
+
+    fn get_generic_params(params: &Self::Params) -> Params {
+        params.common
+    }
+}
+
+impl<T: WithParams + ConvElement> WithParams for Filters<T> {
+    type Params = <T as WithParams>::Params;
+    type ClParams = <T as WithParams>::ClParams;
+
+    fn get_generic_params(params: &Self::Params) -> Params {
+        T::get_generic_params(params)
+    }
+}
+
+impl<T: WithParams + ConvElement> WithParams for Pinned<T> {
+    type Params = <T as WithParams>::Params;
+    type ClParams = <T as WithParams>::ClParams;
+
+    fn get_generic_params(params: &Self::Params) -> Params {
+        T::get_generic_params(params)
+    }
+}

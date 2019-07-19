@@ -1,4 +1,9 @@
+#define LAYOUT_NCHW 0
+#define LAYOUT_NHWC 1
 #define MAX_POINT ((uint2)(-1, -1))
+#ifndef NULL
+#define NULL 0
+#endif
 
 /// Maps the output coordinate to an input one.
 uint2 map_to_input(
@@ -36,12 +41,14 @@ struct __attribute__((packed)) Params {
 /// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
 ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channels.
 ///
-/// The output will have form `MxH'xW'`.
+/// The output will have layout `MxH'xW'` or `H'xW'xM`, depending on the `convolved_layout`
+/// param.
 ///
 /// The kernel should be launched with `[K_H * H', K_W * W', C]` workgroups,
-/// with `[K_H, K_W]` tasks per group. Each group will compute a single output point.
+/// with `[K_H, K_W]` items per group. Each group will compute a single output point.
 __kernel void conv(
     __global float *convolved,
+    uchar convolved_layout,
     __constant float *signal,
     uint3 signal_dims,
     __constant float *filters,
@@ -50,15 +57,15 @@ __kernel void conv(
 ) {
     size_t convolved_h = get_num_groups(0);
     size_t convolved_w = get_num_groups(1);
+    size_t convolved_ch = get_num_groups(2);
 
     size_t x = get_group_id(0);
     size_t y = get_group_id(1);
     size_t filter = get_group_id(2);
     size_t channels_per_group = signal_dims.z / params.groups;
-    size_t group = filter * params.groups / get_num_groups(2);
+    size_t group = filter * params.groups / convolved_ch;
     uint2 offset = (uint2)(get_local_id(0), get_local_id(1));
 
-    float sum = 0.0;
     uint2 input_pt = map_to_input(
         (uint2)(x, y),
         offset,
@@ -68,7 +75,8 @@ __kernel void conv(
         signal_dims.xy
     );
 
-    if ((input_pt.x != -1) && (input_pt.y != -1)) {
+    float sum = 0.0;
+    if ((input_pt.x != -1) || (input_pt.y != -1)) {
         size_t signal_offset =
             input_pt.x * signal_dims.y * signal_dims.z +
             input_pt.y * signal_dims.z +
@@ -81,15 +89,21 @@ __kernel void conv(
         __constant float *signal_channels = &signal[signal_offset];
         __constant float *filter_channels = &filters[filter_offset];
 
-        // First, we vectorize `float` channels into 4-value vectors to calculate
-        // their dot product ~4 times as fast.
-        for (size_t i = 0; i < channels_per_group / 4; i++) {
-            float4 signal_v = vload4(i, signal_channels);
-            float4 filter_v = vload4(i, filter_channels);
-            sum += dot(signal_v, filter_v);
+        // Use vectorized multiply-adds: first 16-element ones, then 4-element ones,
+        // and finally scalars.
+        size_t i = 0;
+        float16 sum_v = (float16) 0.0;
+        for (; i + 16 <= channels_per_group; i += 16) {
+            float16 signal_v = vload16(i >> 4, signal_channels);
+            float16 filter_v = vload16(i >> 4, filter_channels);
+            sum_v = fma(signal_v, filter_v, sum_v);
         }
-        // Add remaining elements without vectorization.
-        for (size_t i = channels_per_group & ~3; i < channels_per_group; i++) {
+        sum = dot((float4) 1.0, sum_v.lo.lo + sum_v.lo.hi + sum_v.hi.lo + sum_v.hi.hi);
+
+        for (; i + 4 <= channels_per_group; i += 4) {
+            sum += dot(vload4(i >> 2, signal_channels), vload4(i >> 2, filter_channels));
+        }
+        for (; i < channels_per_group; i++) {
             sum = fma(signal_channels[i], filter_channels[i], sum);
         }
     }
@@ -111,10 +125,16 @@ __kernel void conv(
             final_sum += filter_biases[filter];
         }
 
-        size_t output_offset =
-            filter * convolved_h * convolved_w +
-            x * convolved_w +
-            y;
+        size_t output_offset = 0;
+        if (convolved_layout == LAYOUT_NCHW) {
+            output_offset = filter * convolved_h * convolved_w +
+                x * convolved_w +
+                y;
+        } else if (convolved_layout == LAYOUT_NHWC) {
+            output_offset = x * convolved_w * convolved_ch +
+                y * convolved_ch +
+                filter;
+        }
         convolved[output_offset] = final_sum;
     }
 }

@@ -73,92 +73,81 @@ __kernel void conv(
     __constant int *filter_biases,
     struct Params params
 ) {
-    size_t convolved_h = get_num_groups(0);
-    size_t convolved_w = get_num_groups(1);
-    size_t convolved_ch = get_num_groups(2);
+    size_t convolved_h = get_num_groups(0) * get_local_size(0);
+    size_t convolved_w = get_num_groups(1) * get_local_size(1);
+    size_t convolved_ch = get_num_groups(2) * get_local_size(2);
 
-    size_t x = get_group_id(0);
-    size_t y = get_group_id(1);
-    size_t filter = get_group_id(2);
+    size_t x = get_global_id(0);
+    size_t y = get_global_id(1);
+    size_t filter = get_global_id(2);
     size_t channels_per_group = signal_dims.z / params.groups;
-    size_t group = filter * params.groups / get_num_groups(2);
-    uint2 offset = (uint2)(get_local_id(0), get_local_id(1));
+    size_t group = filter * params.groups / convolved_ch;
 
     int sum = 0;
-    uint2 input_pt = map_to_input(
-        (uint2)(x, y),
-        offset,
-        params.strides,
-        params.dilation,
-        params.pads,
-        signal_dims.xy
-    );
-    if ((input_pt.x != -1) && (input_pt.y != -1)) {
-        size_t signal_offset =
-            input_pt.x * signal_dims.y * signal_dims.z +
-            input_pt.y * signal_dims.z +
-            channels_per_group * group;
-        size_t filter_offset =
-            filter * FILTER_SIZE * FILTER_SIZE * channels_per_group +
-            offset.x * FILTER_SIZE * channels_per_group +
-            offset.y * channels_per_group;
 
-        __constant char *signal_channels = &signal[signal_offset];
-        __constant char *filter_channels = &filters[filter_offset];
-
-        int16 sum_v = (int16) 0;
-        size_t i = 0;
-        for (; i + 16 <= signal_dims.z; i += 16) {
-            char16 signal_lane = vload16(i >> 4, signal_channels);
-            char16 filter_lane = vload16(i >> 4, filter_channels);
-            int16 signal_val = convert_int16(signal_lane) + params.signal_bias;
-            int16 filter_val = convert_int16(filter_lane) + params.filter_bias;
-            sum_v = mad24(signal_val, filter_val, sum_v);
-        }
-        int4 reduced_sum_v = sum_v.lo.lo + sum_v.lo.hi + sum_v.hi.lo + sum_v.hi.hi;
-        sum = reduced_sum_v.x + reduced_sum_v.y + reduced_sum_v.z + reduced_sum_v.w;
-
-        for (; i < channels_per_group; i++) {
-            sum = mad24(
-                signal_channels[i] + params.signal_bias,
-                filter_channels[i] + params.filter_bias,
-                sum
+    for (uint o_x = 0; o_x < FILTER_SIZE; o_x++) {
+        for (uint o_y = 0; o_y < FILTER_SIZE; o_y++) {
+            uint2 input_pt = map_to_input(
+                (uint2)(x, y),
+                (uint2)(o_x, o_y),
+                params.strides,
+                params.dilation,
+                params.pads,
+                signal_dims.xy
             );
-        }
-    }
 
-    __local int results[FILTER_SIZE][FILTER_SIZE];
-    results[offset.x][offset.y] = sum;
+            if ((input_pt.x != -1) && (input_pt.y != -1)) {
+                size_t signal_offset =
+                    input_pt.x * signal_dims.y * signal_dims.z +
+                    input_pt.y * signal_dims.z +
+                    channels_per_group * group;
+                size_t filter_offset =
+                    filter * FILTER_SIZE * FILTER_SIZE * channels_per_group +
+                    o_x * FILTER_SIZE * channels_per_group +
+                    o_y * channels_per_group;
 
-    // Wait for all workers in the group to submit their results.
-    barrier(CLK_LOCAL_MEM_FENCE);
+                __constant char *signal_channels = &signal[signal_offset];
+                __constant char *filter_channels = &filters[filter_offset];
 
-    if ((offset.x == 0) && (offset.y == 0)) {
-        int final_sum = 0;
+                int16 sum_v = (int16) 0;
+                size_t i = 0;
+                for (; i + 16 <= signal_dims.z; i += 16) {
+                    char16 signal_lane = vload16(i >> 4, signal_channels);
+                    char16 filter_lane = vload16(i >> 4, filter_channels);
+                    int16 signal_val = convert_int16(signal_lane) + params.signal_bias;
+                    int16 filter_val = convert_int16(filter_lane) + params.filter_bias;
+                    sum_v = mad24(signal_val, filter_val, sum_v);
+                }
+                int4 reduced_sum_v = sum_v.lo.lo + sum_v.lo.hi + sum_v.hi.lo + sum_v.hi.hi;
+                sum += reduced_sum_v.x + reduced_sum_v.y + reduced_sum_v.z + reduced_sum_v.w;
 
-        for (size_t o_x = 0; o_x < FILTER_SIZE; o_x++) {
-            for (size_t o_y = 0; o_y < FILTER_SIZE; o_y++) {
-                final_sum += results[o_x][o_y];
+                for (; i < channels_per_group; i++) {
+                    sum = mad24(
+                        signal_channels[i] + params.signal_bias,
+                        filter_channels[i] + params.filter_bias,
+                        sum
+                    );
+                }
             }
         }
-
-        // Perform a linear transform.
-        final_sum *= params.scale;
-        if (filter_biases != NULL) {
-            final_sum += filter_biases[filter];
-        }
-        final_sum = rounded_rshift(final_sum, params.bit_shift) + params.output_bias;
-
-        size_t output_offset = 0;
-        if (convolved_layout == LAYOUT_NCHW) {
-            output_offset = filter * convolved_h * convolved_w +
-                x * convolved_w +
-                y;
-        } else if (convolved_layout == LAYOUT_NHWC) {
-            output_offset = x * convolved_w * convolved_ch +
-                y * convolved_ch +
-                filter;
-        }
-        convolved[output_offset] = convert_char_sat(final_sum);
     }
+
+    // Perform a linear transform.
+    sum *= params.scale;
+    if (filter_biases != NULL) {
+        sum += filter_biases[filter];
+    }
+    sum = rounded_rshift(sum, params.bit_shift) + params.output_bias;
+
+    size_t output_offset = 0;
+    if (convolved_layout == LAYOUT_NCHW) {
+        output_offset = filter * convolved_h * convolved_w +
+            x * convolved_w +
+            y;
+    } else if (convolved_layout == LAYOUT_NHWC) {
+        output_offset = x * convolved_w * convolved_ch +
+            y * convolved_ch +
+            filter;
+    }
+    convolved[output_offset] = convert_char_sat(sum);
 }

@@ -252,12 +252,7 @@ impl<T: ConvElement> InputAndOutput<T> {
         kernel.set_arg("signal_dims", self.signal_dims)
     }
 
-    pub fn execute(
-        &self,
-        kernel: &Kernel,
-        filter_size: usize,
-        out_layout: Layout,
-    ) -> ocl::Result<Array4<T>> {
+    pub fn execute(&self, kernel: &Kernel, out_layout: Layout) -> ocl::Result<Array4<T>> {
         let s = self.output_shape;
         kernel.set_arg("convolved_layout", out_layout as u8)?;
 
@@ -289,8 +284,7 @@ impl<T: ConvElement> InputAndOutput<T> {
 
             let command = kernel
                 .cmd()
-                .global_work_size([s.height * filter_size, s.width * filter_size, s.channels])
-                .local_work_size([filter_size, filter_size]);
+                .global_work_size([s.height, s.width, s.channels]);
             unsafe {
                 command.enq()?;
             }

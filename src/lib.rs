@@ -463,7 +463,7 @@ impl<T: ConvElement + WithParams> Convolution<T> {
         let io = InputAndOutput::new(signal.shape(), filter_count, self)?;
         io.write_signal(signal)?;
         io.pass_as_arguments(&self.kernel)?;
-        io.execute(&self.kernel, self.size, signal.layout())
+        io.execute(&self.kernel, signal.layout())
     }
 }
 
@@ -498,7 +498,7 @@ impl<T: ConvElement + WithParams> Convolution<Filters<T>> {
         let io = InputAndOutput::new(signal.shape(), self.buffers.filter_count(), self)?;
         io.write_signal(signal)?;
         io.pass_as_arguments(&self.kernel)?;
-        io.execute(&self.kernel, self.size, signal.layout())
+        io.execute(&self.kernel, signal.layout())
     }
 }
 
@@ -514,9 +514,7 @@ impl<T: ConvElement + WithParams> Convolution<Pinned<T>> {
         );
 
         self.buffers.io.write_signal(signal)?;
-        self.buffers
-            .io
-            .execute(&self.kernel, self.size, signal.layout())
+        self.buffers.io.execute(&self.kernel, signal.layout())
     }
 }
 
@@ -1013,6 +1011,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::deref_addrof)] // the problem is in the `ndarray::s!` macro
     fn f32_batching() -> Result<(), Error> {
         use ndarray::{s, stack};
 
@@ -1039,7 +1038,7 @@ mod tests {
 
             let sample_outputs: Vec<_> = (0..batch_size)
                 .map(|i| {
-                    let sample_signal = signal.slice(s![i..(i + 1), .., .., ..]);
+                    let sample_signal = signal.slice(s![i..=i, .., .., ..]);
                     conv.compute(to_map(sample_signal))
                 })
                 .collect::<Result<_, _>>()?;

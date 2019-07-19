@@ -6,7 +6,7 @@ use rand_xorshift::XorShiftRng;
 use ocl_convolution::{Convolution, FeatureMap, FeatureMapShape, I8Params, Params};
 
 const INPUT_SIZE: usize = 28;
-const CHANNELS: &[usize] = &[8, 16, 32, 64, 128, 256, 512];
+const CHANNELS: &[usize] = &[8, 16, 32, 64, 128, 256];
 const SAMPLE_SIZE: usize = 20;
 
 #[derive(Clone, Copy)]

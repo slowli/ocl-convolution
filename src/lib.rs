@@ -688,6 +688,55 @@ mod tests {
     }
 
     #[test]
+    fn grouped_i8_convolution() -> Result<(), Error> {
+        let convolution = Convolution::i8(3)?.build(I8Params {
+            common: Params {
+                strides: [1, 1],
+                pads: [0; 4],
+                dilation: [1, 1],
+                groups: 4,
+            },
+            bit_shift: 12,
+            scale: I8Params::convert_scale(12, 1.0),
+            output_bias: 0,
+            signal_bias: 0,
+            filter_bias: 0,
+        })?;
+
+        // All elements on the `i`th channel have value `i`.
+        let signal = Array4::from_shape_vec(
+            [1, 3, 3, 4],
+            vec![
+                1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+                1, 2, 3, 4, 1, 2, 3, 4,
+            ],
+        )?;
+
+        let filters = Array4::from_shape_vec(
+            [4, 3, 3, 1],
+            vec![
+                1, -1, 1, -1, 1, -1, 1, -1, 1, //
+                1, 1, 1, 1, 1, 1, 1, 1, 1, //
+                1, -1, 1, -1, 1, -1, 1, -1, 1, //
+                1, 1, 1, 1, 1, 1, 1, 1, 1, //
+            ],
+        )?;
+        let expected_output = Array4::from_shape_vec(
+            [1, 1, 1, 4],
+            vec![
+                1,  // 1 * (1 - 1 + 1 - ... + 1)
+                18, // 2 * 9
+                3,  // 3 * (1 - 1 + 1 - ... + 1)
+                36, // 4 * 9
+            ],
+        )?;
+
+        let output = convolution.compute(FeatureMap::nhwc(&signal), &filters)?;
+        assert_eq!(output, expected_output);
+        Ok(())
+    }
+
+    #[test]
     fn with_padding() -> Result<(), Error> {
         let convolution = Convolution::f32(3)?.build(Params {
             strides: [1, 1],

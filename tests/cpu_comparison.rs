@@ -366,3 +366,31 @@ fn i8_convolution_on_small_number_of_channels() {
         test_i8_convolution([5, 5, channels], [1, 3, 3, channels]);
     }
 }
+
+#[test]
+fn i8_grouped_convolution_small() {
+    compare_f32_convolution(
+        [5, 5, 8],
+        [2, 3, 3, 4],
+        Params {
+            groups: 2,
+            ..Params::default()
+        },
+    );
+    compare_f32_convolution(
+        [5, 5, 8],
+        [4, 3, 3, 2],
+        Params {
+            groups: 4,
+            ..Params::default()
+        },
+    );
+    compare_f32_convolution(
+        [5, 5, 8],
+        [8, 3, 3, 1],
+        Params {
+            groups: 8,
+            ..Params::default()
+        },
+    );
+}

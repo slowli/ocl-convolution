@@ -111,7 +111,7 @@ __kernel void conv(
 
                 int16 sum_v = (int16) 0;
                 size_t i = 0;
-                for (; i + 16 <= signal_dims.z; i += 16) {
+                for (; i + 16 <= channels_per_group; i += 16) {
                     char16 signal_lane = vload16(i >> 4, signal_channels);
                     char16 filter_lane = vload16(i >> 4, filter_channels);
                     int16 signal_val = convert_int16(signal_lane) + params.signal_bias;

@@ -167,6 +167,20 @@ impl ConvolutionBuilder<i8> {
     }
 }
 
+fn create_io<T: ConvElement, U: WithParams>(
+    signal_shape: FeatureMapShape,
+    filters: &Filters<T>,
+    conv: &Convolution<U>,
+) -> ocl::Result<InputAndOutput<T>> {
+    assert_eq!(
+        signal_shape.channels,
+        filters.channel_count() * U::get_generic_params(&conv.params).groups,
+        "Channel dimensionality in signal and filters must agree"
+    );
+    let io = InputAndOutput::new(signal_shape, filters.filter_count(), conv)?;
+    io.pass_as_arguments(&conv.kernel).map(|()| io)
+}
+
 /// Convolution of a specific filter size.
 ///
 /// # Memory allocation
@@ -471,9 +485,7 @@ impl<T: ConvElement + WithParams> Convolution<T> {
 impl<T: ConvElement + WithParams> Convolution<Filters<T>> {
     /// Returns convolution with pinned signal and output memory.
     pub fn pinned(self, signal_shape: FeatureMapShape) -> ocl::Result<Convolution<Pinned<T>>> {
-        let io = InputAndOutput::new(signal_shape, self.buffers.filter_count(), &self)?;
-        io.pass_as_arguments(&self.kernel)?;
-
+        let io = create_io(signal_shape, &self.buffers, &self)?;
         Ok(Convolution {
             size: self.size,
             params: self.params,
@@ -489,15 +501,8 @@ impl<T: ConvElement + WithParams> Convolution<Filters<T>> {
 
     /// Computes the convolution on the provided signal.
     pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
-        assert_eq!(
-            signal.shape().channels,
-            self.buffers.channel_count(),
-            "Channel dimensionality in signal and filters must agree"
-        );
-
-        let io = InputAndOutput::new(signal.shape(), self.buffers.filter_count(), self)?;
+        let io = create_io(signal.shape(), &self.buffers, self)?;
         io.write_signal(signal)?;
-        io.pass_as_arguments(&self.kernel)?;
         io.execute(&self.kernel, signal.layout())
     }
 }
@@ -512,7 +517,6 @@ impl<T: ConvElement + WithParams> Convolution<Pinned<T>> {
             self.buffers.signal_shape,
             "Signal dimensions differ from the ones set by `with_pinned_memory()`"
         );
-
         self.buffers.io.write_signal(signal)?;
         self.buffers.io.execute(&self.kernel, signal.layout())
     }

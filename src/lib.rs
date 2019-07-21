@@ -110,19 +110,19 @@
 #![deny(missing_docs, missing_debug_implementations)]
 
 use ndarray::{Array4, ArrayView4};
-use ocl::{
-    builders::KernelBuilder, enums::PlatformInfo, prm::Uint3, Buffer, Context, Device, Kernel,
-    OclPrm, Platform, Program, Queue,
-};
+use ocl::OclPrm;
 
-use std::marker::PhantomData;
-
+mod base;
 mod buffers;
 mod params;
 
-use crate::{buffers::InputAndOutput, params::ClI8Params};
+use crate::{
+    base::Base,
+    buffers::{Filters, Pinned},
+};
 pub use crate::{
-    buffers::{FeatureMap, FeatureMapShape, Filters, Layout, Pinned},
+    base::ConvolutionBuilder,
+    buffers::{FeatureMap, FeatureMapShape, Layout},
     params::{I8Params, Params, WithParams},
 };
 
@@ -130,7 +130,7 @@ const SOURCE: &str = include_str!("conv.cl");
 const I8_SOURCE: &str = include_str!("i8_conv.cl");
 
 /// Supported element types for convolutions.
-pub trait ConvElement: OclPrm + Copy + Default + 'static {
+pub trait ConvElement: OclPrm + Copy + Default + WithParams + 'static {
     /// Type of the multiply-add accumulator.
     type Acc: OclPrm + Copy + Default + 'static;
 }
@@ -143,150 +143,23 @@ impl ConvElement for i8 {
     type Acc = i32;
 }
 
-/// Convolution with pinned tensor memory.
-pub type PinnedConvolution<T> = Convolution<Pinned<T>>;
-
-/// Convolution builder.
-#[derive(Debug)]
-pub struct ConvolutionBuilder<T> {
-    program: Program,
-    queue: Queue,
-    context: Context,
-    filter_size: usize,
-    _t: PhantomData<T>,
-}
-
-impl<T: ConvElement> ConvolutionBuilder<T> {
-    /// Initializes a builder with a specific filter size.
-    fn new(filter_size: usize, defines: &[(&'static str, i32)], source: &str) -> ocl::Result<Self> {
-        assert_eq!(
-            filter_size % 2,
-            1,
-            "Even convolution sizes are not supported"
-        );
-
-        let platform = Platform::first()?;
-        let device = Device::first(platform)?;
-        let version = platform.info(PlatformInfo::Version)?.as_opencl_version()?;
-        let context = Context::builder()
-            .platform(platform)
-            .devices(device)
-            .build()?;
-        let mut program_builder = ocl::Program::builder();
-        program_builder.cmplr_def("FILTER_SIZE", filter_size as i32);
-        for &(name, value) in defines {
-            program_builder.cmplr_def(name, value);
-        }
-        if version >= [2, 0].into() {
-            program_builder.cmplr_opt("-cl-std=CL2.0");
-        }
-        let program = program_builder.source(source).build(&context)?;
-        let queue = Queue::new(&context, device, None)?;
-        Ok(Self {
-            program,
-            queue,
-            context,
-            filter_size,
-            _t: PhantomData,
-        })
-    }
-
-    fn kernel_builder(&self) -> KernelBuilder {
-        let mut builder = KernelBuilder::new();
-        builder
-            .name("conv")
-            .program(&self.program)
-            .queue(self.queue.clone());
-        builder
-    }
-}
-
 impl ConvolutionBuilder<f32> {
-    /// Creates a floating-point convolution with a specific spatial size.
+    /// Creates a new floating-point convolution.
     pub fn build(&self, params: Params) -> ocl::Result<Convolution<f32>> {
-        let mut kernel_builder = self.kernel_builder();
-        kernel_builder
-            .arg_named("convolved", None::<&Buffer<f32>>)
-            .arg_named("convolved_layout", Layout::ChannelsLast as u8)
-            .arg_named("signal", None::<&Buffer<f32>>)
-            .arg_named("signal_dims", Uint3::new(0, 0, 0))
-            .arg_named("filters", None::<&Buffer<f32>>)
-            .arg_named("filter_biases", None::<&Buffer<f32>>);
-        params.pass_as_arguments(&mut kernel_builder);
-        let kernel = kernel_builder.build()?;
-        Ok(Convolution {
-            size: self.filter_size,
-            params,
-            kernel,
-            buffers: 0.0,
-            context: self.context.clone(),
-        })
+        Base::new(self, params).map(Convolution)
     }
 }
 
 impl ConvolutionBuilder<i8> {
-    /// Creates a floating-point convolution with a specific spatial size.
+    /// Creates a new quantized convolution.
     pub fn build(&self, params: I8Params) -> ocl::Result<Convolution<i8>> {
-        let mut kernel_builder = self.kernel_builder();
-        kernel_builder
-            .arg_named("convolved", None::<&Buffer<i8>>)
-            .arg_named("convolved_layout", Layout::ChannelsLast as u8)
-            .arg_named("signal", None::<&Buffer<i8>>)
-            .arg_named("signal_dims", Uint3::new(0, 0, 0))
-            .arg_named("filters", None::<&Buffer<i8>>)
-            .arg_named("filter_biases", None::<&Buffer<i32>>)
-            .arg_named("params", ClI8Params::from(params));
-        let kernel = kernel_builder.build()?;
-        Ok(Convolution {
-            size: self.filter_size,
-            params,
-            kernel,
-            buffers: 0,
-            context: self.context.clone(),
-        })
+        Base::new(self, params).map(Convolution)
     }
 }
 
-fn create_io<T: ConvElement, U: WithParams>(
-    signal_shape: FeatureMapShape,
-    filters: &Filters<T>,
-    conv: &Convolution<U>,
-) -> ocl::Result<InputAndOutput<T>> {
-    assert_eq!(
-        signal_shape.channels,
-        filters.channel_count() * U::get_generic_params(&conv.params).groups,
-        "Channel dimensionality in signal and filters must agree"
-    );
-    let io = InputAndOutput::new(signal_shape, filters.filter_count(), conv)?;
-    io.pass_as_arguments(&conv.kernel).map(|()| io)
-}
-
-/// Convolution of a specific filter size.
-///
-/// # Memory allocation
-///
-/// There are three different subtypes of `Convolution<_>` differing in how
-/// the OpenCL buffers are allocated.
-///
-/// | Type | Filters alloc | Input / output alloc | Transform from preceding type |
-/// |------|---------|----------------|-------|
-/// | `Convolution<T>` | on call | on call | N/A |
-/// | `Convolution<Filters<T>>` | pinned | on call | `with_filters()`, `with_biased_filters()` |
-/// | `Convolution<Pinned<T>>` | pinned | pinned | `pinned()` |
-///
-/// In the table, `T` is a type implementing [`ConvElement`] trait.
-///
-/// Pinning OpenCL buffers makes computations faster, but can lead to out-of-memory errors.
-///
-/// [`ConvElement`]: trait.ConvElement.html
+/// Convolution without pinned memory.
 #[derive(Debug)]
-pub struct Convolution<T: WithParams> {
-    size: usize,
-    params: T::Params,
-    kernel: Kernel,
-    buffers: T,
-    context: Context,
-}
+pub struct Convolution<T: ConvElement>(Base<T>);
 
 impl Convolution<f32> {
     /// Creates a new floating-point convolution builder.
@@ -358,37 +231,35 @@ impl Convolution<i8> {
     }
 }
 
-impl<T: WithParams> Convolution<T> {
-    fn queue(&self) -> &Queue {
-        self.kernel
-            .default_queue()
-            .expect("kernel should come with a pre-configured queue")
-    }
-
+impl<T: ConvElement> Convolution<T> {
     /// Spatial size of the convolution.
     pub fn size(&self) -> usize {
-        self.size
+        self.0.size()
     }
 
     /// Returns general parameters of the convolution.
     pub fn params(&self) -> &T::Params {
-        &self.params
+        self.0.params()
     }
 
     /// Sets convolution parameters.
     pub fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
-        self.params = params.clone();
-        self.kernel.set_arg("params", params.into())
+        self.0.set_params(params)
     }
-}
 
-impl<T: ConvElement + WithParams> Convolution<T> {
     /// Returns the convolution with pinned filter memory.
+    ///
+    /// # Parameters
+    ///
+    /// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
+    ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channels.
     pub fn with_filters<'a>(
         self,
         filters: impl Into<ArrayView4<'a, T>>,
-    ) -> ocl::Result<Convolution<Filters<T>>> {
-        self.with_filters_inner(filters.into(), None)
+    ) -> ocl::Result<FiltersConvolution<T>> {
+        self.0
+            .with_filters(filters.into(), None)
+            .map(FiltersConvolution)
     }
 
     /// Returns the convolution with pinned filter / filter bias memory.
@@ -396,36 +267,23 @@ impl<T: ConvElement + WithParams> Convolution<T> {
         self,
         filters: impl Into<ArrayView4<'a, T>>,
         filter_biases: &[T::Acc],
-    ) -> ocl::Result<Convolution<Filters<T>>> {
-        self.with_filters_inner(filters.into(), Some(filter_biases))
-    }
-
-    fn with_filters_inner(
-        self,
-        filters: ArrayView4<T>,
-        filter_biases: Option<&[T::Acc]>,
-    ) -> ocl::Result<Convolution<Filters<T>>> {
-        let filters = Filters::new(filters, filter_biases, &self)?;
-        Ok(Convolution {
-            buffers: filters,
-            size: self.size,
-            params: self.params,
-            kernel: self.kernel,
-            context: self.context,
-        })
+    ) -> ocl::Result<FiltersConvolution<T>> {
+        self.0
+            .with_filters(filters.into(), Some(filter_biases))
+            .map(FiltersConvolution)
     }
 
     /// Performs convolution on the provided `signal` and `filters`.
     ///
     /// # Parameters
     ///
-    /// - `signal` should have `HxWxC` layout (i.e., the channel dimension is the inner-most one).
     /// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
-    ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channel.
+    ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channels.
     ///
     /// # Return value
     ///
-    /// The output will have form `MxH'xW'`. An error means something wrong with OpenCL.
+    /// The output will have the same layout as `signal`. An error means something wrong
+    /// with OpenCL.
     ///
     /// # Panics
     ///
@@ -438,7 +296,7 @@ impl<T: ConvElement + WithParams> Convolution<T> {
         signal: FeatureMap<T>,
         filters: impl Into<ArrayView4<'a, T>>,
     ) -> ocl::Result<Array4<T>> {
-        self.compute_inner(signal, filters.into(), None)
+        self.0.compute(signal, filters.into(), None)
     }
 
     /// Performs convolution on the provided `signal` and `filters`, with the output offset
@@ -452,69 +310,65 @@ impl<T: ConvElement + WithParams> Convolution<T> {
         filters: impl Into<ArrayView4<'a, T>>,
         filter_biases: &[T::Acc],
     ) -> ocl::Result<Array4<T>> {
-        self.compute_inner(signal, filters.into(), Some(filter_biases))
-    }
-
-    fn compute_inner(
-        &self,
-        signal: FeatureMap<T>,
-        filters: ArrayView4<T>,
-        filter_biases: Option<&[T::Acc]>,
-    ) -> ocl::Result<Array4<T>> {
-        assert_eq!(
-            signal.shape().channels,
-            filters.shape()[3] * T::get_generic_params(&self.params).groups,
-            "Channel dimensionality in signal and filters must agree"
-        );
-
-        let filter_count = filters.shape()[0];
-        let filters = Filters::new(filters, filter_biases, self)?;
-        filters.pass_as_arguments(&self.kernel)?;
-        let io = InputAndOutput::new(signal.shape(), filter_count, self)?;
-        io.write_signal(signal)?;
-        io.pass_as_arguments(&self.kernel)?;
-        io.execute(&self.kernel, signal.layout())
+        self.0.compute(signal, filters.into(), Some(filter_biases))
     }
 }
 
-/// Convolution with pinned filters / filter biases.
-impl<T: ConvElement + WithParams> Convolution<Filters<T>> {
-    /// Returns convolution with pinned signal and output memory.
-    pub fn pinned(self, signal_shape: FeatureMapShape) -> ocl::Result<Convolution<Pinned<T>>> {
-        let io = create_io(signal_shape, &self.buffers, &self)?;
-        Ok(Convolution {
-            size: self.size,
-            params: self.params,
-            kernel: self.kernel,
-            buffers: Pinned {
-                filters: self.buffers,
-                io,
-                signal_shape,
-            },
-            context: self.context,
-        })
+/// Convolution with pinned filters memory.
+#[derive(Debug)]
+pub struct FiltersConvolution<T: ConvElement>(Base<Filters<T>>);
+
+impl<T: ConvElement> FiltersConvolution<T> {
+    /// Spatial size of the convolution.
+    pub fn size(&self) -> usize {
+        self.0.size()
+    }
+
+    /// Returns general parameters of the convolution.
+    pub fn params(&self) -> &T::Params {
+        self.0.params()
+    }
+
+    /// Sets convolution parameters.
+    pub fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
+        self.0.set_params(params)
+    }
+
+    /// Pins signal and output memory for this convolution.
+    pub fn pin(self, signal_shape: FeatureMapShape) -> ocl::Result<PinnedConvolution<T>> {
+        self.0.pinned(signal_shape).map(PinnedConvolution)
     }
 
     /// Computes the convolution on the provided signal.
     pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
-        let io = create_io(signal.shape(), &self.buffers, self)?;
-        io.write_signal(signal)?;
-        io.execute(&self.kernel, signal.layout())
+        self.0.compute(signal)
     }
 }
 
-/// Convolution with all buffers (filters / filter biases, signal, output) pinned.
-impl<T: ConvElement + WithParams> Convolution<Pinned<T>> {
+/// Convolution with pinned memory for filters, signal and output.
+#[derive(Debug)]
+pub struct PinnedConvolution<T: ConvElement>(Base<Pinned<T>>);
+
+impl<T: ConvElement> PinnedConvolution<T> {
+    /// Spatial size of the convolution.
+    pub fn size(&self) -> usize {
+        self.0.size()
+    }
+
+    /// Returns general parameters of the convolution.
+    pub fn params(&self) -> &T::Params {
+        self.0.params()
+    }
+
+    /// Sets convolution parameters.
+    pub fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
+        self.0.set_params(params)
+    }
+
     /// Computes the convolution on the provided signal. Signal dimensions must agree with
     /// the ones provided to the `pinned()` constructor.
     pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
-        assert_eq!(
-            signal.shape(),
-            self.buffers.signal_shape,
-            "Signal dimensions differ from the ones set by `with_pinned_memory()`"
-        );
-        self.buffers.io.write_signal(signal)?;
-        self.buffers.io.execute(&self.kernel, signal.layout())
+        self.0.compute(signal)
     }
 }
 
@@ -596,7 +450,7 @@ mod tests {
             assert!(convolution.compute(FeatureMap::nhwc(&signal)).is_ok());
         }
 
-        let pinned = convolution.pinned(FeatureMapShape {
+        let pinned = convolution.pin(FeatureMapShape {
             batch_size: 1,
             width: 5,
             height: 5,
@@ -1048,7 +902,7 @@ mod tests {
         let output = convolution.compute(signal)?;
         assert_eq!(output, expected_output);
 
-        let convolution = convolution.pinned(FeatureMapShape {
+        let convolution = convolution.pin(FeatureMapShape {
             batch_size: 1,
             width: 5,
             height: 5,

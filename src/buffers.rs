@@ -5,7 +5,7 @@ use ocl::{flags, prm::Uint3, Buffer, Kernel};
 
 use std::borrow::Cow;
 
-use crate::{ConvElement, Convolution, Params, WithParams};
+use crate::{base::Base, ConvElement, Params, WithParams};
 
 /// Shape of a `FeatureMap`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -138,12 +138,12 @@ impl<T: ConvElement> Filters<T> {
     pub(crate) fn new<U: WithParams>(
         filters: ArrayView4<T>,
         biases: Option<&[T::Acc]>,
-        conv: &Convolution<U>,
+        conv: &Base<U>,
     ) -> ocl::Result<Self> {
         assert!(
-            filters.shape()[1] == conv.size && filters.shape()[2] == conv.size,
+            filters.shape()[1] == conv.size() && filters.shape()[2] == conv.size(),
             "Invalid filter shape: expected {0}x{0}, got {1}x{2}",
-            conv.size,
+            conv.size(),
             filters.shape()[1],
             filters.shape()[2]
         );
@@ -177,9 +177,9 @@ impl<T: ConvElement> Filters<T> {
             })
             .transpose()?;
 
-        conv.kernel.set_arg("filters", &filters_buffer)?;
+        conv.kernel().set_arg("filters", &filters_buffer)?;
         if let Some(ref biases) = filter_biases {
-            conv.kernel.set_arg("filter_biases", biases)?;
+            conv.kernel().set_arg("filter_biases", biases)?;
         }
 
         Ok(Self {
@@ -213,17 +213,17 @@ impl<T: ConvElement> InputAndOutput<T> {
     pub fn new<U: WithParams>(
         signal_shape: FeatureMapShape,
         filter_count: usize,
-        conv: &Convolution<U>,
+        conv: &Base<U>,
     ) -> ocl::Result<Self> {
         let Params {
             pads,
             strides,
             dilation,
             ..
-        } = U::get_generic_params(&conv.params);
-        let effective_kernel_h = conv.size + (dilation[0] - 1) * (conv.size - 1);
+        } = U::get_generic_params(&conv.params());
+        let effective_kernel_h = conv.size() + (dilation[0] - 1) * (conv.size() - 1);
         let out_h = (signal_shape.height - effective_kernel_h + pads[0] + pads[2]) / strides[0] + 1;
-        let effective_kernel_w = conv.size + (dilation[1] - 1) * (conv.size - 1);
+        let effective_kernel_w = conv.size() + (dilation[1] - 1) * (conv.size() - 1);
         let out_w = (signal_shape.width - effective_kernel_w + pads[1] + pads[3]) / strides[1] + 1;
         let output_shape = FeatureMapShape {
             height: out_h,

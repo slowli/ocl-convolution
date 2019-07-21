@@ -46,7 +46,7 @@ fn run_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
             let convolution = convolution
                 .with_filters(&filters)
                 .unwrap()
-                .pinned(FeatureMapShape {
+                .pin(FeatureMapShape {
                     batch_size: 1,
                     width: INPUT_SIZE,
                     height: INPUT_SIZE,
@@ -129,7 +129,7 @@ fn run_i8_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
             let convolution = convolution
                 .with_filters(&filters)
                 .unwrap()
-                .pinned(FeatureMapShape {
+                .pin(FeatureMapShape {
                     batch_size: 1,
                     width: INPUT_SIZE,
                     height: INPUT_SIZE,

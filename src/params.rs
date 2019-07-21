@@ -1,10 +1,11 @@
 //! Convolution parameters.
 
 use ocl::{
-    builders::KernelBuilder,
     prm::{Uint2, Uint4},
     OclPrm,
 };
+
+use std::fmt;
 
 use crate::{ConvElement, Filters, Pinned};
 
@@ -31,12 +32,6 @@ impl Default for Params {
             groups: 1,
             dilation: [1, 1],
         }
-    }
-}
-
-impl Params {
-    pub(crate) fn pass_as_arguments(self, builder: &mut KernelBuilder) {
-        builder.arg_named("params", ClParams::from(self));
     }
 }
 
@@ -140,7 +135,7 @@ unsafe impl OclPrm for ClI8Params {}
 /// Type that can be associated with convolution parameters.
 pub trait WithParams {
     /// Parameters of the convolution.
-    type Params: Clone + Into<Self::ClParams>;
+    type Params: Clone + fmt::Debug + Into<Self::ClParams>;
     /// OpenCL-friendly version of parameters.
     type ClParams: OclPrm;
 
@@ -166,7 +161,7 @@ impl WithParams for i8 {
     }
 }
 
-impl<T: WithParams + ConvElement> WithParams for Filters<T> {
+impl<T: ConvElement> WithParams for Filters<T> {
     type Params = <T as WithParams>::Params;
     type ClParams = <T as WithParams>::ClParams;
 
@@ -175,7 +170,7 @@ impl<T: WithParams + ConvElement> WithParams for Filters<T> {
     }
 }
 
-impl<T: WithParams + ConvElement> WithParams for Pinned<T> {
+impl<T: ConvElement> WithParams for Pinned<T> {
     type Params = <T as WithParams>::Params;
     type ClParams = <T as WithParams>::ClParams;
 

@@ -126,7 +126,7 @@ pub use crate::{
     params::{I8Params, Params, WithParams},
 };
 
-const SOURCE: &str = include_str!("conv.cl");
+const SOURCE: &str = include_str!(concat!(env!("OUT_DIR"), "/conv.cl"));
 
 /// Supported element types for convolutions.
 pub trait ConvElement: OclPrm + Copy + Default + WithParams + 'static {

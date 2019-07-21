@@ -9,6 +9,11 @@ readme = "README.md"
 categories = ["science"]
 description = "OpenCL-accelerated 2D convolutions"
 repository = "https://github.com/slowli/ocl-convolution"
+exclude = [
+  "/misc/**",
+  ".editorconfig",
+  ".travis.yml",
+]
 
 [badges]
 travis-ci = { repository = "slowli/ocl-convolution" }

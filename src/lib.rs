@@ -127,7 +127,6 @@ pub use crate::{
 };
 
 const SOURCE: &str = include_str!("conv.cl");
-const I8_SOURCE: &str = include_str!("i8_conv.cl");
 
 /// Supported element types for convolutions.
 pub trait ConvElement: OclPrm + Copy + Default + WithParams + 'static {
@@ -164,7 +163,7 @@ pub struct Convolution<T: ConvElement>(Base<T>);
 impl Convolution<f32> {
     /// Creates a new floating-point convolution builder.
     pub fn f32(size: usize) -> ocl::Result<ConvolutionBuilder<f32>> {
-        ConvolutionBuilder::new(size, &[], SOURCE)
+        ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 32)], SOURCE)
     }
 }
 
@@ -227,7 +226,7 @@ impl Convolution<f32> {
 impl Convolution<i8> {
     /// Creates a new `i8` convolution builder.
     pub fn i8(size: usize) -> ocl::Result<ConvolutionBuilder<i8>> {
-        ConvolutionBuilder::new(size, &[], I8_SOURCE)
+        ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 8)], SOURCE)
     }
 }
 

@@ -28,11 +28,26 @@ uint2 map_to_input(
     return input_pt;
 }
 
+#if KERNEL_TYPE == 32
+typedef float Elem;
+typedef float Acc;
+#elif KERNEL_TYPE == 8
+typedef char Elem;
+typedef int Acc;
+#endif
+
 struct __attribute__((packed)) Params {
     uint2 strides;
     uint4 pads;
     uint groups;
     uint2 dilation;
+#if KERNEL_TYPE == 8
+    int bit_shift;
+    int scale;
+    int output_bias;
+    int signal_bias;
+    int filter_bias;
+#endif
 };
 
 struct __attribute__((packed)) OutputParams {
@@ -40,24 +55,88 @@ struct __attribute__((packed)) OutputParams {
     uchar layout;
 };
 
+#if KERNEL_TYPE == 8
+// Round to nearest, ties to even integer bit shift to the right.
+int rounded_rshift(int number, int bit_shift) {
+    int mask = (1 << bit_shift) - 1;
+    int threshold = 1 << (bit_shift - 1);
+    int lower_bits = number & mask;
+    int result = number >> bit_shift;
+    // We assume `lower_bits >= 0`.
+
+    if ((lower_bits > threshold) || ((lower_bits == threshold) && ((result & 1) == 1))) {
+        result += 1;
+    }
+    return result;
+}
+#endif
+
+void add_channels(
+    Acc *sum,
+    const __constant Elem *signal_channels,
+    const __constant Elem *filter_channels,
+    size_t channels_per_group,
+    const Acc biases[2]
+) {
+#if KERNEL_TYPE == 32
+    // Use vectorized multiply-adds: first 16-element ones, then 4-element ones,
+    // and finally scalars.
+    size_t i = 0;
+    float16 sum_v = (float16) 0.0;
+    for (; i + 16 <= channels_per_group; i += 16) {
+        float16 signal_v = vload16(i >> 4, signal_channels);
+        float16 filter_v = vload16(i >> 4, filter_channels);
+        sum_v = fma(signal_v, filter_v, sum_v);
+    }
+    *sum += dot((float4) 1.0, sum_v.lo.lo + sum_v.lo.hi + sum_v.hi.lo + sum_v.hi.hi);
+
+    for (; i + 4 <= channels_per_group; i += 4) {
+        *sum += dot(vload4(i >> 2, signal_channels), vload4(i >> 2, filter_channels));
+    }
+    for (; i < channels_per_group; i++) {
+        *sum = fma(signal_channels[i], filter_channels[i], *sum);
+    }
+#elif KERNEL_TYPE == 8
+    int16 sum_v = (int16) 0;
+    size_t i = 0;
+    for (; i + 16 <= channels_per_group; i += 16) {
+        char16 signal_lane = vload16(i >> 4, signal_channels);
+        char16 filter_lane = vload16(i >> 4, filter_channels);
+        int16 signal_val = convert_int16(signal_lane) + biases[0];
+        int16 filter_val = convert_int16(filter_lane) + biases[1];
+        sum_v = mad24(signal_val, filter_val, sum_v);
+    }
+    int4 reduced_sum_v = sum_v.lo.lo + sum_v.lo.hi + sum_v.hi.lo + sum_v.hi.hi;
+    *sum += reduced_sum_v.x + reduced_sum_v.y + reduced_sum_v.z + reduced_sum_v.w;
+
+    for (; i < channels_per_group; i++) {
+        *sum = mad24(
+            signal_channels[i] + biases[0],
+            filter_channels[i] + biases[1],
+            *sum
+        );
+    }
+#endif
+}
+
 /// Computes convolution of two tensors.
 ///
-/// - `signal` should have `HxWxC` layout (i.e., the channel dimension is the inner-most one).
+/// - `signal` should have `NxHxWxC` layout (i.e., the channel dimension is the inner-most one).
 /// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
 ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channels.
 ///
 /// The output will have layout `MxH'xW'` or `H'xW'xM`, depending on the `convolved_layout`
 /// param.
 ///
-/// The kernel should be launched with `[K_H * H', K_W * W', C]` workgroups,
-/// with `[K_H, K_W]` items per group. Each group will compute a single output point.
+/// The kernel should be launched with `[H' * N, W', C]` workgroups,
+/// where `N` is the batch size.
 __kernel void conv(
-    __global float *output,
+    __global Elem *output,
     struct OutputParams out_params,
-    __constant float *signal,
+    const __constant Elem *signal,
     uint3 signal_dims,
-    __constant float *filters,
-    __constant float *filter_biases,
+    const __constant Elem *filters,
+    const __constant Acc *filter_biases,
     struct Params params
 ) {
     size_t output_h = get_num_groups(0) * get_local_size(0) / out_params.batch_size;
@@ -71,7 +150,12 @@ __kernel void conv(
     size_t channels_per_group = signal_dims.z / params.groups;
     size_t group = filter * params.groups / output_ch;
 
-    float sum = (filter_biases == NULL) ? 0.0 : filter_biases[filter];
+    Acc sum = 0;
+#if KERNEL_TYPE == 32
+    Acc biases[2] = { 0.0, 0.0 };
+#elif KERNEL_TYPE == 8
+    Acc biases[2] = { params.signal_bias, params.filter_bias };
+#endif
 
     for (uint o_x = 0; o_x < FILTER_SIZE; o_x++) {
         for (uint o_y = 0; o_y < FILTER_SIZE; o_y++) {
@@ -95,29 +179,30 @@ __kernel void conv(
                     o_x * FILTER_SIZE * channels_per_group +
                     o_y * channels_per_group;
 
-                __constant float *signal_channels = &signal[signal_offset];
-                __constant float *filter_channels = &filters[filter_offset];
-
-                // Use vectorized multiply-adds: first 16-element ones, then 4-element ones,
-                // and finally scalars.
-                size_t i = 0;
-                float16 sum_v = (float16) 0.0;
-                for (; i + 16 <= channels_per_group; i += 16) {
-                    float16 signal_v = vload16(i >> 4, signal_channels);
-                    float16 filter_v = vload16(i >> 4, filter_channels);
-                    sum_v = fma(signal_v, filter_v, sum_v);
-                }
-                sum += dot((float4) 1.0, sum_v.lo.lo + sum_v.lo.hi + sum_v.hi.lo + sum_v.hi.hi);
-
-                for (; i + 4 <= channels_per_group; i += 4) {
-                    sum += dot(vload4(i >> 2, signal_channels), vload4(i >> 2, filter_channels));
-                }
-                for (; i < channels_per_group; i++) {
-                    sum = fma(signal_channels[i], filter_channels[i], sum);
-                }
+                add_channels(
+                    &sum,
+                    &signal[signal_offset],
+                    &filters[filter_offset],
+                    channels_per_group,
+                    biases
+                );
             }
         }
     }
+
+#if KERNEL_TYPE == 32
+    if (filter_biases != NULL) {
+        sum += filter_biases[filter];
+    }
+    float converted_sum = sum;
+#elif KERNEL_TYPE == 8
+    sum *= params.scale;
+    if (filter_biases != NULL) {
+        sum += filter_biases[filter];
+    }
+    sum = rounded_rshift(sum, params.bit_shift) + params.output_bias;
+    char converted_sum = convert_char_sat(sum);
+#endif
 
     size_t out_offset = output_h * output_w * output_ch * batch_idx;
     switch (out_params.layout) {
@@ -132,5 +217,5 @@ __kernel void conv(
                 filter;
             break;
     }
-    output[out_offset] = sum;
+    output[out_offset] = converted_sum;
 }

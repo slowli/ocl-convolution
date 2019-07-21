@@ -12,9 +12,9 @@
 //!
 //! For now, the crate implements convolutions on two numerical formats:
 //!
-//! - Single-precision floats (`f32`) with [`Convolution`]
+//! - Single-precision floats (`f32`)
 //! - Signed 8-bit integers with 32-bit multiply-add accumulator (this format is frequently denoted
-//!   `int8/32` in deep learning literature), with [`I8Convolution`]
+//!   `int8/32` in deep learning literature)
 //!
 //! In both cases, the convolution uses output-stationary workflow (see, e.g., [this paper] for
 //! the definition); that is, each element of the output tensor is computed in a single run
@@ -26,241 +26,152 @@
 //! [OpenCL]: https://www.khronos.org/opencl/
 //! [this paper]: https://dl.acm.org/citation.cfm?id=3001177
 //! [`Convolution`]: struct.Convolution.html
-//! [`I8Convolution`]: struct.I8Convolution.html
+//!
+//! # Examples
+//!
+//! ## Floating-point convolution
+//!
+//! ```
+//! use ndarray::{Array3, Array4};
+//! use rand::{Rng, thread_rng};
+//! use ocl_convolution::{Convolution, FeatureMap, Params};
+//!
+//! # fn main() -> Result<(), ocl::Error> {
+//! let convolution = Convolution::f32(3)?.build(Params {
+//!     strides: [1, 1],
+//!     pads: [0; 4],
+//!     dilation: [1, 1],
+//!     groups: 1,
+//! })?;
+//!
+//! // Generate random signal with 6x6 spatial dims and 3 channels.
+//! let mut rng = thread_rng();
+//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-1.0, 1.0));
+//! // Construct two 3x3 spatial filters.
+//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-1.0, 1.0));
+//! // Perform the convolution. The output should have 4x4 spatial dims
+//! // and contain 2 channels (1 per each filter). The output layout will
+//! // be the same as in the signal.
+//! let output = convolution.compute(
+//!     // `FeatureMap` wraps `ArrayView4` with information about
+//!     // memory layout (which is "channels-last" / NHWC in this case).
+//!     FeatureMap::nhwc(&signal),
+//!     &filters,
+//! )?;
+//! assert_eq!(output.shape(), [1, 4, 4, 2]);
+//!
+//! // For increased efficiency, we may pin filter memory.
+//! // This is especially useful when the same filters are convolved
+//! // with multiple signals.
+//! let convolution = convolution.with_filters(&filters)?;
+//! let new_output = convolution.compute(FeatureMap::nhwc(&signal))?;
+//! assert_eq!(output, new_output);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Quantized convolution
+//!
+//! ```
+//! use ndarray::{Array3, Array4};
+//! use rand::{Rng, thread_rng};
+//! use ocl_convolution::{Convolution, I8Params, FeatureMap, Params};
+//!
+//! # fn main() -> Result<(), ocl::Error> {
+//! const BIT_SHIFT: u8 = 16;
+//! let params = I8Params {
+//!     common: Params::default(),
+//!     // These params are found by profiling; here, they are
+//!     // chosen randomly.
+//!     bit_shift: BIT_SHIFT,
+//!     scale: I8Params::convert_scale(BIT_SHIFT, 0.1),
+//!     output_bias: -10,
+//!     signal_bias: 20,
+//!     filter_bias: -5,
+//! };
+//! let convolution = Convolution::i8(3)?.build(params)?;
+//!
+//! // Generate random signal with 6x6 spatial dims and 3 channels.
+//! let mut rng = thread_rng();
+//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-127, 127));
+//! // Construct two 3x3 spatial filters.
+//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-127, 127));
+//! // Perform the convolution. The output should have 4x4 spatial dims
+//! // and contain 2 channels (1 per each filter).
+//! let output = convolution.compute(
+//!     FeatureMap::nhwc(&signal),
+//!     &filters,
+//! )?;
+//! assert_eq!(output.shape(), [1, 4, 4, 2]);
+//! # Ok(())
+//! # }
+//! ```
 
-use ndarray::{Array3, ArrayView3, ArrayView4};
-use ocl::{
-    flags,
-    prm::{Uint2, Uint3, Uint4},
-    Buffer, ProQue,
+#![deny(missing_docs, missing_debug_implementations)]
+
+use ndarray::{Array4, ArrayView4};
+use ocl::OclPrm;
+
+mod base;
+mod buffers;
+mod params;
+
+use crate::{
+    base::Base,
+    buffers::{Filters, Pinned},
+};
+pub use crate::{
+    base::ConvolutionBuilder,
+    buffers::{FeatureMap, FeatureMapShape, Layout},
+    params::{I8Params, Params, WithParams},
 };
 
-use std::{borrow::Cow, convert::TryFrom};
+const SOURCE: &str = include_str!(concat!(env!("OUT_DIR"), "/conv.cl"));
 
-const SOURCE: &str = include_str!("conv.cl");
-const I8_SOURCE: &str = include_str!("i8_conv.cl");
+/// Supported element types for convolutions.
+pub trait ConvElement: OclPrm + Copy + Default + WithParams + 'static {
+    /// Type of the multiply-add accumulator.
+    type Acc: OclPrm + Copy + Default + 'static;
+}
 
-/// Convolution of a specific filter size on single-precision floats.
-///
-/// # Examples
-///
-/// ```
-/// use ndarray::{Array3, Array4};
-/// use rand::{Rng, thread_rng};
-/// use std::iter;
-/// # use ocl_convolution::Convolution;
-///
-/// # fn main() -> Result<(), ocl::Error> {
-/// let convolution = Convolution::new(3)?;
-/// // Generate random signal with 6x6 spacial dims and 3 channels.
-/// let mut rng = thread_rng();
-/// let mut signal = Array3::zeros([6, 6, 3]);
-/// signal.map_mut(|x| *x = rng.gen_range(-1.0, 1.0));
-/// // Construct two 3x3 spacial filters.
-/// let mut filters = Array4::zeros([2, 3, 3, 3]);
-/// filters.map_mut(|x| *x = rng.gen_range(-1.0, 1.0));
-/// // Perform the convolution. The output should have 4x4 spacial dims
-/// // and contain 2 channels (1 per each filter).
-/// let output = convolution.compute(
-///     signal.view(),
-///     filters.view(),
-///     [1, 1],
-///     [0; 4],
-/// )?;
-/// assert_eq!(output.shape(), [2, 4, 4]);
-/// # Ok(())
-/// # }
-/// ```
+impl ConvElement for f32 {
+    type Acc = f32;
+}
+
+impl ConvElement for i8 {
+    type Acc = i32;
+}
+
+impl ConvolutionBuilder<f32> {
+    /// Creates a new floating-point convolution.
+    pub fn build(&self, params: Params) -> ocl::Result<Convolution<f32>> {
+        Base::new(self, params).map(Convolution)
+    }
+}
+
+impl ConvolutionBuilder<i8> {
+    /// Creates a new quantized convolution.
+    pub fn build(&self, params: I8Params) -> ocl::Result<Convolution<i8>> {
+        Base::new(self, params).map(Convolution)
+    }
+}
+
+/// Convolution without pinned memory.
 #[derive(Debug)]
-pub struct Convolution {
-    size: usize,
-    program: ProQue,
-}
+pub struct Convolution<T: ConvElement>(Base<T>);
 
-impl Convolution {
-    /// Creates a convolution with a specific spatial size.
-    pub fn new(size: usize) -> ocl::Result<Self> {
-        assert_eq!(size % 2, 1, "Even convolution sizes are not supported");
-
-        let src = format!("#define FILTER_SIZE {}\n{}", size, SOURCE);
-        let program = ProQue::builder().src(src).build()?;
-        Ok(Self { size, program })
-    }
-
-    /// Spatial size of the convolution.
-    pub fn size(&self) -> usize {
-        self.size
-    }
-
-    /// Performs convolution on the provided `signal` and `filters`.
-    ///
-    /// # Parameters
-    ///
-    /// - `signal` should have `HxWxC` layout (i.e., the channel dimension is the inner-most one).
-    /// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
-    ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channel.
-    ///
-    /// # Return value
-    ///
-    /// The output will have form `MxH'xW'`. An error means something wrong with OpenCL.
-    ///
-    /// # Panics
-    ///
-    /// - The method will panic if `filters` do not have expected spatial dimensions, i.e.,
-    ///   `self.size() x self.size()`.
-    /// - Likewise, the method will panic if the number of input channels differs from number of
-    ///   channels in `filters`.
-    pub fn compute(
-        &self,
-        signal: ArrayView3<f32>,
-        filters: ArrayView4<f32>,
-        strides: [usize; 2],
-        pads: [usize; 4],
-    ) -> ocl::Result<Array3<f32>> {
-        let in_h = signal.shape()[0];
-        let in_w = signal.shape()[1];
-        let in_channels = signal.shape()[2];
-        let filter_count = filters.shape()[0];
-
-        let out_h = (in_h - self.size + pads[0] + pads[2] + strides[0]) / strides[0];
-        let out_w = (in_w - self.size + pads[1] + pads[3] + strides[1]) / strides[1];
-
-        assert!(
-            filters.shape()[1] == self.size && filters.shape()[2] == self.size,
-            "Invalid filter shape"
-        );
-        assert_eq!(
-            in_channels,
-            filters.shape()[3],
-            "Channel dimensionality in signal and filters must agree"
-        );
-
-        let program = &self.program;
-
-        let signal_slice = signal
-            .as_slice()
-            .map(Cow::Borrowed)
-            .unwrap_or_else(|| Cow::Owned(signal.iter().cloned().collect()));
-        let signal_buffer = Buffer::builder()
-            .queue(program.queue().clone())
-            .len(<[usize; 3]>::try_from(signal.shape()).unwrap())
-            .flags(flags::MEM_READ_ONLY)
-            .copy_host_slice(signal_slice.as_ref())
-            .build()?;
-
-        let filters_slice = filters
-            .as_slice()
-            .map(Cow::Borrowed)
-            .unwrap_or_else(|| Cow::Owned(filters.iter().cloned().collect()));
-        let filters_buffer = Buffer::builder()
-            .queue(program.queue().clone())
-            .len(filters.shape().iter().product::<usize>())
-            .flags(flags::MEM_READ_ONLY)
-            .copy_host_slice(filters_slice.as_ref())
-            .build()?;
-
-        let output_buffer = Buffer::builder()
-            .queue(program.queue().clone())
-            .len([filter_count, out_h, out_w])
-            .flags(flags::MEM_HOST_READ_ONLY)
-            .build()?;
-
-        let kernel = program
-            .kernel_builder("conv")
-            .global_work_size([out_h * self.size, out_w * self.size, filter_count])
-            .local_work_size([self.size, self.size])
-            .arg_named("convolved", &output_buffer)
-            .arg_named("signal", &signal_buffer)
-            .arg_named(
-                "signal_dims",
-                Uint3::new(in_h as u32, in_w as u32, in_channels as u32),
-            )
-            .arg_named("filters", &filters_buffer)
-            .arg_named("strides", Uint2::new(strides[0] as u32, strides[1] as u32))
-            .arg_named(
-                "pads",
-                Uint4::new(
-                    pads[0] as u32,
-                    pads[1] as u32,
-                    pads[2] as u32,
-                    pads[3] as u32,
-                ),
-            )
-            .build()?;
-
-        unsafe {
-            kernel.enq()?;
-        }
-
-        let mut output_data = vec![0.0_f32; output_buffer.len()];
-        output_buffer.read(&mut output_data).enq()?;
-        let output = Array3::from_shape_vec([filter_count, out_h, out_w], output_data).unwrap();
-        Ok(output)
+impl Convolution<f32> {
+    /// Creates a new floating-point convolution builder.
+    pub fn f32(size: usize) -> ocl::Result<ConvolutionBuilder<f32>> {
+        ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 32)], SOURCE)
     }
 }
 
-/// Params for `I8Convolution`.
+/// Quantized convolution over signed 8-bit integers.
 ///
-/// See [`I8Convolution`] docs for details how to set these parameters.
-///
-/// [`I8Convolution`]: struct.I8Convolution.html
-#[derive(Debug, Clone, Copy)]
-pub struct I8Params {
-    /// Strides (spacial distances between sequential application of filters).
-    pub strides: [usize; 2],
-    /// Pads for the signal.
-    pub pads: [usize; 4],
-    /// Fixed-point scale of the post-convolution transform.
-    pub scale: i32,
-    /// Bias for the post-convolution transform.
-    pub output_bias: i32,
-    /// Bias for the signal.
-    pub signal_bias: i32,
-    /// Bias for the filters.
-    pub filter_bias: i32,
-}
-
-impl I8Params {
-    /// Converts `scale` to fixed-point presentation. The resulting value can be used
-    /// as the `scale` field.
-    pub fn convert_scale(bit_shift: u8, scale: f32) -> i32 {
-        (((1 << i32::from(bit_shift)) as f32) * scale).round() as i32
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-#[repr(C, packed)]
-struct ClI8Params {
-    strides: Uint2,
-    pads: Uint4,
-    scale: i32,
-    output_bias: i32,
-    signal_bias: i32,
-    filter_bias: i32,
-}
-
-impl From<I8Params> for ClI8Params {
-    fn from(value: I8Params) -> Self {
-        ClI8Params {
-            strides: Uint2::new(value.strides[0] as u32, value.strides[1] as u32),
-            pads: Uint4::new(
-                value.pads[0] as u32,
-                value.pads[1] as u32,
-                value.pads[2] as u32,
-                value.pads[3] as u32,
-            ),
-            scale: value.scale,
-            output_bias: value.output_bias,
-            signal_bias: value.signal_bias,
-            filter_bias: value.filter_bias,
-        }
-    }
-}
-
-// Safety ensured by the same alignment here and in OCL code.
-unsafe impl ocl::OclPrm for ClI8Params {}
-
-/// Quantized convolution over signed 8-bit integers with the specified filter size.
+/// Due to use of `i8` inputs, computations are performed much faster than on `f32` inputs
+/// (the difference manifests most on the specialized hardware, but it is seen in this
+/// OpenCL-powered implementation as well).
 ///
 /// ## Connection to real-value convolution
 ///
@@ -280,10 +191,6 @@ unsafe impl ocl::OclPrm for ClI8Params {}
 /// `scale` and `bias` may differ for different tensors; these params are usually determined
 /// by *profiling* the corresponding convolutional neural network (see e.g. [this paper]).
 ///
-/// Due to use of `i8` inputs, computations are performed much faster than on `f32` inputs
-/// (the difference manifests most on the specialized hardware, but it is seen in this
-/// OpenCL-powered implementation as well).
-///
 /// Denote these quantiation params for tensor `T` as `T.scale` and `T.bias`. Denote `S`
 /// the signal, `F` the filter, `O` the output. Convolution parameters should be set as follows:
 ///
@@ -294,9 +201,8 @@ unsafe impl ocl::OclPrm for ClI8Params {}
 /// | `output_bias`    | `O.bias`  |
 /// | `scale`          | `S.scale * F.scale / O.scale` |
 ///
-/// `scale` is represented as a fixed-point number with [`bit_shift()`] binary digits after
-/// the point. Note that filter biases `B` are assumed to be unbiased and upscaled; they are
-/// not transformed during the computation.
+/// `scale` is represented as a fixed-point number with [`bit_shift`] binary digits after
+/// the point. Note that filter biases `B` are not transformed during the computation.
 ///
 /// # Computing convolution
 ///
@@ -315,367 +221,572 @@ unsafe impl ocl::OclPrm for ClI8Params {}
 /// 7. Apply output bias: `O := O + params.output_bias`.
 /// 8. Saturate output to `i8` range.
 ///
-/// [`bit_shift()`]: #method.bit_shift
+/// [`bit_shift`]: struct.I8Params.html#field.bit_shift
 /// [this paper]: https://arxiv.org/abs/1805.00907
-///
-/// # Examples
-///
-/// ```
-/// use ndarray::{Array3, Array4};
-/// use rand::{Rng, thread_rng};
-/// use std::iter;
-/// # use ocl_convolution::{I8Convolution, I8Params};
-///
-/// # fn main() -> Result<(), ocl::Error> {
-/// const BIT_SHIFT: u8 = 16;
-/// let convolution = I8Convolution::new(3, BIT_SHIFT)?;
-/// // Generate random signal with 6x6 spacial dims and 3 channels.
-/// let mut rng = thread_rng();
-/// let mut signal = Array3::zeros([6, 6, 3]);
-/// signal.map_mut(|x| *x = rng.gen_range(-127, 127));
-/// // Construct two 3x3 spacial filters.
-/// let mut filters = Array4::zeros([2, 3, 3, 3]);
-/// filters.map_mut(|x| *x = rng.gen_range(-127, 127));
-/// // Perform the convolution. The output should have 4x4 spacial dims
-/// // and contain 2 channels (1 per each filter).
-/// let output = convolution.compute(
-///     signal.view(),
-///     filters.view(),
-///     None, // no filter biases
-///     I8Params {
-///         strides: [1, 1],
-///         pads: [0; 4],
-///         // These params are found by profiling; here, they are
-///         // chosen randomly.
-///         scale: I8Params::convert_scale(BIT_SHIFT, 0.1),
-///         output_bias: -10,
-///         signal_bias: 20,
-///         filter_bias: -5,
-///     },
-/// )?;
-/// assert_eq!(output.shape(), [2, 4, 4]);
-/// # Ok(())
-/// # }
-/// ```
-#[derive(Debug)]
-pub struct I8Convolution {
-    size: usize,
-    bit_shift: u8,
-    program: ProQue,
+impl Convolution<i8> {
+    /// Creates a new `i8` convolution builder.
+    pub fn i8(size: usize) -> ocl::Result<ConvolutionBuilder<i8>> {
+        ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 8)], SOURCE)
+    }
 }
 
-impl I8Convolution {
-    /// Creates a convolution with the specified size and bit shift.
-    pub fn new(size: usize, bit_shift: u8) -> ocl::Result<Self> {
-        assert_eq!(size % 2, 1, "Even convolution sizes are not supported");
-
-        let src = format!(
-            "#define FILTER_SIZE {}\n#define BIT_SHIFT {}\n{}",
-            size, bit_shift, I8_SOURCE
-        );
-        let program = ProQue::builder().src(src).build()?;
-        Ok(Self {
-            size,
-            bit_shift,
-            program,
-        })
-    }
-
+impl<T: ConvElement> Convolution<T> {
     /// Spatial size of the convolution.
     pub fn size(&self) -> usize {
-        self.size
+        self.0.size()
     }
 
-    /// Bit shift used in fixed-point number operations.
-    pub fn bit_shift(&self) -> u8 {
-        self.bit_shift
+    /// Returns general parameters of the convolution.
+    pub fn params(&self) -> &T::Params {
+        self.0.params()
+    }
+
+    /// Sets convolution parameters.
+    pub fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
+        self.0.set_params(params)
+    }
+
+    /// Returns the convolution with pinned filter memory.
+    ///
+    /// # Parameters
+    ///
+    /// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
+    ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channels.
+    pub fn with_filters<'a>(
+        self,
+        filters: impl Into<ArrayView4<'a, T>>,
+    ) -> ocl::Result<FiltersConvolution<T>> {
+        self.0
+            .with_filters(filters.into(), None)
+            .map(FiltersConvolution)
+    }
+
+    /// Returns the convolution with pinned filter / filter bias memory.
+    pub fn with_biased_filters<'a>(
+        self,
+        filters: impl Into<ArrayView4<'a, T>>,
+        filter_biases: &[T::Acc],
+    ) -> ocl::Result<FiltersConvolution<T>> {
+        self.0
+            .with_filters(filters.into(), Some(filter_biases))
+            .map(FiltersConvolution)
     }
 
     /// Performs convolution on the provided `signal` and `filters`.
     ///
     /// # Parameters
     ///
-    /// - `signal` should have `HxWxC` layout (i.e., the channel dimension is the inner-most one).
     /// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
-    ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channel.
-    /// - `filter_biases`, if present, should have `M` elements.
+    ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channels.
     ///
     /// # Return value
     ///
-    /// The output will have form `MxH'xW'`. An error means something wrong with OpenCL.
+    /// The output will have the same layout as `signal`. An error means something wrong
+    /// with OpenCL.
     ///
     /// # Panics
     ///
     /// - The method will panic if `filters` do not have expected spatial dimensions, i.e.,
     ///   `self.size() x self.size()`.
     /// - Likewise, the method will panic if the number of input channels differs from number of
-    ///   channels in `filters`, or if `filter_biases` length does not agree
-    ///   with the `filter` dimensions.
-    pub fn compute(
+    ///   channels in `filters`.
+    pub fn compute<'a>(
         &self,
-        signal: ArrayView3<i8>,
-        filters: ArrayView4<i8>,
-        filter_biases: Option<&[i32]>,
-        params: I8Params,
-    ) -> ocl::Result<Array3<i8>> {
-        let in_h = signal.shape()[0];
-        let in_w = signal.shape()[1];
-        let in_channels = signal.shape()[2];
-        let filter_count = filters.shape()[0];
+        signal: FeatureMap<T>,
+        filters: impl Into<ArrayView4<'a, T>>,
+    ) -> ocl::Result<Array4<T>> {
+        self.0.compute(signal, filters.into(), None)
+    }
 
-        let pads = params.pads;
-        let strides = params.strides;
-        let out_h = (in_h - self.size + pads[0] + pads[2] + strides[0]) / strides[0];
-        let out_w = (in_w - self.size + pads[1] + pads[3] + strides[1]) / strides[1];
+    /// Performs convolution on the provided `signal` and `filters`, with the output offset
+    /// by the provided per-filter biases.
+    ///
+    /// Parameters, return value and panics are generally the same as for
+    /// [`compute()`](#method.compute).
+    pub fn compute_with_biases<'a>(
+        &self,
+        signal: FeatureMap<T>,
+        filters: impl Into<ArrayView4<'a, T>>,
+        filter_biases: &[T::Acc],
+    ) -> ocl::Result<Array4<T>> {
+        self.0.compute(signal, filters.into(), Some(filter_biases))
+    }
+}
 
-        assert!(
-            filters.shape()[1] == self.size && filters.shape()[2] == self.size,
-            "Invalid filter shape"
-        );
-        assert_eq!(
-            in_channels,
-            filters.shape()[3],
-            "Channel dimensionality in signal and filters must agree"
-        );
-        if let Some(ref biases) = filter_biases {
-            assert_eq!(
-                biases.len(),
-                filter_count,
-                "Channel biases should have the same number of channels as the output"
-            );
-        }
+/// Convolution with pinned filters memory.
+#[derive(Debug)]
+pub struct FiltersConvolution<T: ConvElement>(Base<Filters<T>>);
 
-        let program = &self.program;
+impl<T: ConvElement> FiltersConvolution<T> {
+    /// Spatial size of the convolution.
+    pub fn size(&self) -> usize {
+        self.0.size()
+    }
 
-        let signal_slice = signal
-            .as_slice()
-            .map(Cow::Borrowed)
-            .unwrap_or_else(|| Cow::Owned(signal.iter().cloned().collect()));
-        let signal_buffer = Buffer::builder()
-            .queue(program.queue().clone())
-            .len(<[usize; 3]>::try_from(signal.shape()).unwrap())
-            .flags(flags::MEM_READ_ONLY)
-            .copy_host_slice(signal_slice.as_ref())
-            .build()?;
+    /// Returns general parameters of the convolution.
+    pub fn params(&self) -> &T::Params {
+        self.0.params()
+    }
 
-        let filters_slice = filters
-            .as_slice()
-            .map(Cow::Borrowed)
-            .unwrap_or_else(|| Cow::Owned(filters.iter().cloned().collect()));
-        let filters_buffer = Buffer::builder()
-            .queue(program.queue().clone())
-            .len(filters.shape().iter().product::<usize>())
-            .flags(flags::MEM_READ_ONLY)
-            .copy_host_slice(filters_slice.as_ref())
-            .build()?;
+    /// Sets convolution parameters.
+    pub fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
+        self.0.set_params(params)
+    }
 
-        let output_buffer = Buffer::builder()
-            .queue(program.queue().clone())
-            .len([filter_count, out_h, out_w])
-            .flags(flags::MEM_HOST_READ_ONLY)
-            .build()?;
+    /// Pins signal and output memory for this convolution.
+    pub fn pin(self, signal_shape: FeatureMapShape) -> ocl::Result<PinnedConvolution<T>> {
+        self.0.pinned(signal_shape).map(PinnedConvolution)
+    }
 
-        let kernel = program
-            .kernel_builder("conv")
-            .global_work_size([out_h * self.size, out_w * self.size, filter_count])
-            .local_work_size([self.size, self.size])
-            .arg_named("convolved", &output_buffer)
-            .arg_named("signal", &signal_buffer)
-            .arg_named(
-                "signal_dims",
-                Uint3::new(in_h as u32, in_w as u32, in_channels as u32),
-            )
-            .arg_named("filters", &filters_buffer)
-            .arg_named("filter_biases", None::<&Buffer<i32>>)
-            .arg_named("params", ClI8Params::from(params))
-            .build()?;
-        if let Some(biases) = filter_biases {
-            let biases = Buffer::builder()
-                .queue(program.queue().clone())
-                .len(biases.len())
-                .flags(flags::MEM_READ_ONLY)
-                .copy_host_slice(biases)
-                .build()?;
-            kernel.set_arg("filter_biases", &biases)?;
-        }
+    /// Computes the convolution on the provided signal.
+    pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
+        self.0.compute(signal)
+    }
+}
 
-        unsafe {
-            kernel.enq()?;
-        }
+/// Convolution with pinned memory for filters, signal and output.
+#[derive(Debug)]
+pub struct PinnedConvolution<T: ConvElement>(Base<Pinned<T>>);
 
-        let mut output_data = vec![0; output_buffer.len()];
-        output_buffer.read(&mut output_data).enq()?;
-        let output = Array3::from_shape_vec([filter_count, out_h, out_w], output_data).unwrap();
-        Ok(output)
+impl<T: ConvElement> PinnedConvolution<T> {
+    /// Spatial size of the convolution.
+    pub fn size(&self) -> usize {
+        self.0.size()
+    }
+
+    /// Returns general parameters of the convolution.
+    pub fn params(&self) -> &T::Params {
+        self.0.params()
+    }
+
+    /// Sets convolution parameters.
+    pub fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
+        self.0.set_params(params)
+    }
+
+    /// Computes the convolution on the provided signal. Signal dimensions must agree with
+    /// the ones provided to the `pinned()` constructor.
+    pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
+        self.0.compute(signal)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use ndarray::Array4;
+    use failure::Error;
+    use ndarray::Axis;
+    use rand::{thread_rng, Rng};
     use std::f32;
 
     use super::*;
 
     #[test]
-    fn basics() {
-        let convolution = Convolution::new(3).unwrap();
-        let signal = Array3::from_shape_vec(
-            [5, 5, 1],
+    fn basics() -> Result<(), Error> {
+        let convolution = Convolution::f32(3)?.build(Params::default())?;
+        let signal = Array4::from_shape_vec(
+            [1, 5, 5, 1],
             vec![
                 0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
                 18., 19., 20., 21., 22., 23., 24.,
             ],
-        )
-        .unwrap();
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.0; 9]).unwrap();
+        )?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.0; 9])?;
 
-        let c = convolution
-            .compute(signal.view(), filter.view(), [1, 1], [0; 4])
-            .unwrap();
+        let c = convolution.compute(FeatureMap::nhwc(&signal), &filter)?;
         assert_eq!(
             c,
-            Array3::from_shape_vec(
-                [1, 3, 3],
+            Array4::from_shape_vec(
+                [1, 3, 3, 1],
                 vec![54., 63., 72., 99., 108., 117., 144., 153., 162.],
-            )
-            .unwrap(),
+            )?,
         );
+
+        let signal = Array4::from_shape_vec(
+            [1, 1, 5, 5],
+            vec![
+                0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
+                18., 19., 20., 21., 22., 23., 24.,
+            ],
+        )?;
+        let c = convolution.compute(FeatureMap::nchw(&signal), &filter)?;
+        assert_eq!(
+            c,
+            Array4::from_shape_vec(
+                [1, 1, 3, 3],
+                vec![54., 63., 72., 99., 108., 117., 144., 153., 162.],
+            )?,
+        );
+
+        Ok(())
     }
 
     #[test]
-    fn with_padding() {
-        let convolution = Convolution::new(3).unwrap();
-        let signal = Array3::from_shape_vec(
-            [5, 5, 1],
+    fn f32_convolution_with_filters() -> Result<(), Error> {
+        let filters = Array4::from_elem([1, 3, 3, 1], 1.0);
+        let convolution = Convolution::f32(3)?
+            .build(Params::default())?
+            .with_filters(filters.view())?;
+
+        let signal = Array4::from_shape_vec(
+            [1, 5, 5, 1],
             vec![
                 0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
                 18., 19., 20., 21., 22., 23., 24.,
             ],
-        )
-        .unwrap();
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.0; 9]).unwrap();
+        )?;
 
-        let c = convolution
-            .compute(signal.view(), filter.view(), [1, 1], [1; 4])
-            .unwrap();
+        let c = convolution.compute(FeatureMap::nhwc(&signal))?;
         assert_eq!(
             c,
-            Array3::from_shape_vec(
-                [1, 5, 5],
+            Array4::from_shape_vec(
+                [1, 3, 3, 1],
+                vec![54., 63., 72., 99., 108., 117., 144., 153., 162.],
+            )?,
+        );
+
+        for i in 1..=5 {
+            let signal = Array4::from_elem([1, 5 + i, 5 + i, 1], i as f32);
+            assert!(convolution.compute(FeatureMap::nhwc(&signal)).is_ok());
+        }
+
+        let pinned = convolution.pin(FeatureMapShape {
+            batch_size: 1,
+            width: 5,
+            height: 5,
+            channels: 1,
+        })?;
+        let c = pinned.compute(FeatureMap::nhwc(&signal))?;
+        assert_eq!(
+            c,
+            Array4::from_shape_vec(
+                [1, 3, 3, 1],
+                vec![54., 63., 72., 99., 108., 117., 144., 153., 162.],
+            )?,
+        );
+        for i in 1..=5 {
+            let signal = Array4::from_elem([1, 5, 5, 1], i as f32);
+            assert!(pinned.compute(FeatureMap::nhwc(&signal)).is_ok());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn f32_convolution_with_filters_and_biases() -> Result<(), Error> {
+        let filters = Array4::from_elem([1, 3, 3, 1], 1.0);
+        let convolution = Convolution::f32(3)?
+            .build(Params::default())?
+            .with_biased_filters(filters.view(), &[-100.0])?;
+
+        let signal = Array4::from_shape_vec(
+            [1, 5, 5, 1],
+            vec![
+                0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
+                18., 19., 20., 21., 22., 23., 24.,
+            ],
+        )?;
+
+        let c = convolution.compute(FeatureMap::nhwc(&signal))?;
+        assert_eq!(
+            c,
+            Array4::from_shape_vec(
+                [1, 3, 3, 1],
+                vec![-46., -37., -28., -1., 8., 17., 44., 53., 62.],
+            )?,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn grouped_convolution() -> Result<(), Error> {
+        let convolution = Convolution::f32(3)?.build(Params {
+            strides: [1, 1],
+            pads: [0; 4],
+            dilation: [1, 1],
+            groups: 2,
+        })?;
+
+        // All elements on the `i`th channel have value `i`.
+        let signal = Array4::from_shape_vec(
+            [1, 3, 3, 4],
+            vec![
+                1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1.,
+                2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4.,
+            ],
+        )?;
+
+        let filters = Array4::from_shape_vec(
+            [2, 3, 3, 2],
+            vec![
+                // 1st filter (applied to channels 0..2)
+                1., -1., 1., -1., 1., -1., 1., -1., 1., -1., 1., -1., 1., -1., 1., -1., 1., -1.,
+                // 2nd filter (applied to channels 2..4)
+                1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.,
+            ],
+        )?;
+        let expected_output = Array4::from_shape_vec(
+            [1, 1, 1, 2],
+            vec![
+                -9.0, // = (1 + 1 + ... + 1) * (1 - 2)
+                63.0, // = (1 + 1 + ... + 1) * (3 + 4)
+            ],
+        )?;
+
+        let output = convolution.compute(FeatureMap::nhwc(&signal), &filters)?;
+        assert_eq!(output, expected_output);
+        Ok(())
+    }
+
+    #[test]
+    fn grouped_i8_convolution() -> Result<(), Error> {
+        let convolution = Convolution::i8(3)?.build(I8Params {
+            common: Params {
+                strides: [1, 1],
+                pads: [0; 4],
+                dilation: [1, 1],
+                groups: 4,
+            },
+            bit_shift: 12,
+            scale: I8Params::convert_scale(12, 1.0),
+            output_bias: 0,
+            signal_bias: 0,
+            filter_bias: 0,
+        })?;
+
+        // All elements on the `i`th channel have value `i`.
+        let signal = Array4::from_shape_vec(
+            [1, 3, 3, 4],
+            vec![
+                1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+                1, 2, 3, 4, 1, 2, 3, 4,
+            ],
+        )?;
+
+        let filters = Array4::from_shape_vec(
+            [4, 3, 3, 1],
+            vec![
+                1, -1, 1, -1, 1, -1, 1, -1, 1, //
+                1, 1, 1, 1, 1, 1, 1, 1, 1, //
+                1, -1, 1, -1, 1, -1, 1, -1, 1, //
+                1, 1, 1, 1, 1, 1, 1, 1, 1, //
+            ],
+        )?;
+        let expected_output = Array4::from_shape_vec(
+            [1, 1, 1, 4],
+            vec![
+                1,  // 1 * (1 - 1 + 1 - ... + 1)
+                18, // 2 * 9
+                3,  // 3 * (1 - 1 + 1 - ... + 1)
+                36, // 4 * 9
+            ],
+        )?;
+
+        let output = convolution.compute(FeatureMap::nhwc(&signal), &filters)?;
+        assert_eq!(output, expected_output);
+        Ok(())
+    }
+
+    #[test]
+    fn with_padding() -> Result<(), Error> {
+        let convolution = Convolution::f32(3)?.build(Params {
+            strides: [1, 1],
+            pads: [1; 4],
+            dilation: [1, 1],
+            groups: 1,
+        })?;
+
+        let signal = Array4::from_shape_vec(
+            [1, 5, 5, 1],
+            vec![
+                0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
+                18., 19., 20., 21., 22., 23., 24.,
+            ],
+        )?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.0; 9])?;
+
+        let c = convolution.compute(FeatureMap::nhwc(&signal), &filter)?;
+        assert_eq!(
+            c,
+            Array4::from_shape_vec(
+                [1, 5, 5, 1],
                 vec![
                     12., 21., 27., 33., 24., 33., 54., 63., 72., 51., 63., 99., 108., 117., 81.,
                     93., 144., 153., 162., 111., 72., 111., 117., 123., 84.,
                 ],
-            )
-            .unwrap(),
+            )?,
         );
+        Ok(())
     }
 
     #[test]
-    fn with_strides() {
-        let convolution = Convolution::new(3).unwrap();
+    fn with_strides() -> Result<(), Error> {
+        let convolution = Convolution::f32(3)?.build(Params {
+            strides: [2, 2],
+            pads: [0; 4],
+            dilation: [1, 1],
+            groups: 1,
+        })?;
 
-        let signal = Array3::from_shape_vec(
-            [7, 5, 1],
+        let signal = Array4::from_shape_vec(
+            [1, 7, 5, 1],
             vec![
-                0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
-                18., 19., 20., 21., 22., 23., 24., 25., 26., 27., 28., 29., 30., 31., 32., 33.,
-                34.,
+                0., 1., 2., 3., 4., //
+                5., 6., 7., 8., 9., //
+                10., 11., 12., 13., 14., //
+                15., 16., 17., 18., 19., //
+                20., 21., 22., 23., 24., //
+                25., 26., 27., 28., 29., //
+                30., 31., 32., 33., 34., //
             ],
-        )
-        .unwrap();
-
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.; 9]).unwrap();
-
+        )?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.; 9])?;
         let expected_output =
-            Array3::from_shape_vec([1, 3, 2], vec![54., 72., 144., 162., 234., 252.]).unwrap();
+            Array4::from_shape_vec([1, 3, 2, 1], vec![54., 72., 144., 162., 234., 252.])?;
 
         assert_eq!(
-            convolution
-                .compute(signal.view(), filter.view(), [2, 2], [0; 4])
-                .unwrap(),
+            convolution.compute(FeatureMap::nhwc(&signal), &filter)?,
             expected_output
         );
+        Ok(())
     }
 
     #[test]
-    fn with_strides_and_padding() {
-        let convolution = Convolution::new(3).unwrap();
+    fn with_strides_and_padding() -> Result<(), Error> {
+        let convolution = Convolution::f32(3)?.build(Params {
+            strides: [2, 2],
+            pads: [1; 4],
+            dilation: [1, 1],
+            groups: 1,
+        })?;
 
-        let signal = Array3::from_shape_vec(
-            [7, 5, 1],
+        let signal = Array4::from_shape_vec(
+            [1, 7, 5, 1],
             vec![
                 0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
                 18., 19., 20., 21., 22., 23., 24., 25., 26., 27., 28., 29., 30., 31., 32., 33.,
                 34.,
             ],
-        )
-        .unwrap();
+        )?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.; 9])?;
 
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.; 9]).unwrap();
-
-        let expected_output = Array3::from_shape_vec(
-            [1, 4, 3],
+        let expected_output = Array4::from_shape_vec(
+            [1, 4, 3, 1],
             vec![
                 12., 27., 24., 63., 108., 81., 123., 198., 141., 112., 177., 124.,
             ],
-        )
-        .unwrap();
+        )?;
 
         assert_eq!(
-            convolution
-                .compute(signal.view(), filter.view(), [2, 2], [1; 4])
-                .unwrap(),
+            convolution.compute(FeatureMap::nhwc(&signal), &filter)?,
             expected_output
         );
+        Ok(())
     }
 
     #[test]
-    fn with_several_input_channels() {
-        let convolution = Convolution::new(3).unwrap();
+    fn with_several_input_channels() -> Result<(), Error> {
+        let convolution = Convolution::f32(3)?.build(Params {
+            strides: [1, 1],
+            pads: [1; 4],
+            dilation: [1, 1],
+            groups: 1,
+        })?;
 
         let mut signal = vec![0.0; 100];
         for (i, val) in signal.iter_mut().enumerate() {
             *val = (i / 4) as f32;
         }
-        let signal = Array3::from_shape_vec([5, 5, 4], signal).unwrap();
+        let signal = Array4::from_shape_vec([1, 5, 5, 4], signal)?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 4], vec![1.; 36])?;
+        let output = convolution.compute(FeatureMap::nhwc(&signal), &filter)?;
 
-        let filter = Array4::from_shape_vec([1, 3, 3, 4], vec![1.; 36]).unwrap();
-        let output = convolution
-            .compute(signal.view(), filter.view(), [1, 1], [1; 4])
-            .unwrap();
-
-        assert!((output[[0, 0, 0]] - 48.0).abs() < f32::EPSILON);
+        assert!((output[[0, 0, 0, 0]] - 48.0).abs() < f32::EPSILON);
         // 48 = 4 * (0 + 1 + 5 + 6), numbers in the upper left corner of the image.
+        Ok(())
     }
 
     #[test]
-    fn rounding_in_i8_convolution() {
-        const BIT_SHIFT: u8 = 8;
-        let convolution = I8Convolution::new(1, BIT_SHIFT).unwrap();
-        let signal = Array3::from_shape_vec([2, 3, 1], vec![-7, -6, -5, 5, 6, 7]).unwrap();
-        let filter = Array4::from_shape_vec([1, 1, 1, 1], vec![1]).unwrap();
-        let params = I8Params {
+    fn with_dilation() -> Result<(), Error> {
+        let mut convolution = Convolution::f32(3)?.build(Params {
             strides: [1, 1],
             pads: [0; 4],
+            groups: 1,
+            dilation: [2, 2],
+        })?;
+
+        let signal = Array4::from_shape_vec(
+            [1, 5, 5, 1],
+            vec![
+                1.0, 2.0, 3.0, 4.0, 5.0, //
+                6.0, 7.0, 8.0, 9.0, 10.0, //
+                11.0, 12.0, 13.0, 14.0, 15.0, //
+                16.0, 17.0, 18.0, 19.0, 20.0, //
+                21.0, 22.0, 23.0, 24.0, 25.0, //
+            ],
+        )?;
+        let filters = Array4::from_elem([1, 3, 3, 1], 1.0);
+
+        // 117.0 = 1.0 + 3.0 + ... + 25.0
+        let expected_output = Array4::from_elem([1, 1, 1, 1], 117.0);
+        assert_eq!(
+            convolution.compute(FeatureMap::nhwc(&signal), &filters)?,
+            expected_output
+        );
+
+        convolution.set_params(Params {
+            strides: [1, 1],
+            pads: [1; 4],
+            groups: 1,
+            dilation: [2, 2],
+        })?;
+
+        let expected_output = Array4::from_shape_vec(
+            [1, 3, 3, 1],
+            vec![
+                52.0, 78.0, 52.0, //
+                78.0, 117.0, 78.0, //
+                52.0, 78.0, 52.0, //
+            ],
+        )?;
+        assert_eq!(
+            convolution.compute(FeatureMap::nhwc(&signal), &filters)?,
+            expected_output
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn rounding_in_i8_convolution() -> Result<(), Error> {
+        const BIT_SHIFT: u8 = 8;
+        let params = I8Params {
+            common: Params::default(),
+            bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 0.5),
             output_bias: 0,
             signal_bias: 0,
             filter_bias: 0,
         };
+        let convolution = Convolution::i8(1)?.build(params)?;
+        let signal = Array4::from_shape_vec([1, 2, 3, 1], vec![-7, -6, -5, 5, 6, 7])?;
+        let filter = Array4::from_shape_vec([1, 1, 1, 1], vec![1])?;
 
-        let output = convolution
-            .compute(signal.view(), filter.view(), None, params)
-            .unwrap();
-        let expected_output = Array3::from_shape_vec([1, 2, 3], vec![-4, -3, -2, 2, 3, 4]).unwrap();
+        let output = convolution.compute(FeatureMap::nhwc(&signal), &filter)?;
+        let expected_output = Array4::from_shape_vec([1, 2, 3, 1], vec![-4, -3, -2, 2, 3, 4])?;
         assert_eq!(output, expected_output);
+        Ok(())
     }
 
     #[test]
-    fn i8_convolution() {
+    fn i8_convolution() -> Result<(), Error> {
         const BIT_SHIFT: u8 = 8;
-        let convolution = I8Convolution::new(3, BIT_SHIFT as u8).unwrap();
+        let params = I8Params {
+            common: Params::default(),
+            bit_shift: BIT_SHIFT,
+            scale: I8Params::convert_scale(BIT_SHIFT, 1.0),
+            output_bias: 0,
+            signal_bias: 0,
+            filter_bias: 0,
+        };
+        let mut convolution = Convolution::i8(3)?.build(params)?;
 
         let signal = vec![
             0, 1, 2, 3, 4, //
@@ -684,27 +795,16 @@ mod tests {
             -5, -6, -7, -8, -9, //
             0, -1, -2, -3, -4, //
         ];
-        let signal = Array3::from_shape_vec([5, 5, 1], signal).unwrap();
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1; 9]).unwrap();
+        let signal = Array4::from_shape_vec([1, 5, 5, 1], signal)?;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1; 9])?;
 
         let expected_output = vec![
             54, 63, 72, //
             33, 36, 39, //
             12, 9, 6, //
         ];
-        let expected_output = Array3::from_shape_vec([1, 3, 3], expected_output).unwrap();
-
-        let params = I8Params {
-            strides: [1, 1],
-            pads: [0; 4],
-            scale: I8Params::convert_scale(BIT_SHIFT, 1.0),
-            output_bias: 0,
-            signal_bias: 0,
-            filter_bias: 0,
-        };
-        let output = convolution
-            .compute(signal.view(), filter.view(), None, params)
-            .unwrap();
+        let expected_output = Array4::from_shape_vec([1, 3, 3, 1], expected_output)?;
+        let output = convolution.compute(FeatureMap::nhwc(&signal), &filter)?;
         assert_eq!(output, expected_output);
 
         // Check the same convolution with different scale / bias params.
@@ -714,19 +814,17 @@ mod tests {
             -1, 0, 1, //
             -8, -9, -10, //
         ];
-        let expected_output = Array3::from_shape_vec([1, 3, 3], expected_output).unwrap();
+        let expected_output = Array4::from_shape_vec([1, 3, 3, 1], expected_output)?;
 
-        let params = I8Params {
-            strides: [1, 1],
-            pads: [0; 4],
+        convolution.set_params(I8Params {
+            common: Params::default(),
+            bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 1.0 / 3.0),
             output_bias: -12,
             signal_bias: 0,
             filter_bias: 0,
-        };;
-        let output = convolution
-            .compute(signal.view(), filter.view(), None, params)
-            .unwrap();
+        })?;
+        let output = convolution.compute(FeatureMap::nhwc(&signal), &filter)?;
         assert_eq!(output, expected_output);
 
         // Check `filter_bias` / `signal_bias`.
@@ -737,29 +835,36 @@ mod tests {
             -5, -6, -7, -8, -9, //
             0, -1, -2, -3, -4, //
         ];
-        let signal = Array3::from_shape_vec([5, 5, 1], signal).unwrap() - 7;
-        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![0; 9]).unwrap();
+        let signal = Array4::from_shape_vec([1, 5, 5, 1], signal)? - 7;
+        let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![0; 9])?;
 
-        let params = I8Params {
-            strides: [1, 1],
-            pads: [0; 4],
+        convolution.set_params(I8Params {
+            common: Params::default(),
             output_bias: -12,
             filter_bias: 1,
             signal_bias: 7,
+            bit_shift: BIT_SHIFT,
             scale: I8Params::convert_scale(BIT_SHIFT, 1.0 / 3.0),
-        };
-        let output = convolution
-            .compute(signal.view(), filter.view(), None, params)
-            .unwrap();
+        })?;
+        let output = convolution.compute(FeatureMap::nhwc(&signal), &filter)?;
         assert_eq!(output, expected_output);
+        Ok(())
     }
 
     #[test]
-    fn i8_convolution_with_filter_bias() {
+    fn i8_convolution_with_filter_bias() -> Result<(), Error> {
         const BIT_SHIFT: u8 = 8;
         const MULTIPLIER: i32 = 1 << (BIT_SHIFT as i32);
 
-        let convolution = I8Convolution::new(3, BIT_SHIFT).unwrap();
+        let params = I8Params {
+            common: Params::default(),
+            bit_shift: BIT_SHIFT,
+            scale: I8Params::convert_scale(BIT_SHIFT, 1.0 / 3.0),
+            output_bias: 0,
+            signal_bias: 0,
+            filter_bias: 0,
+        };
+        let convolution = Convolution::i8(3)?.build(params)?;
 
         let signal = vec![
             0, 1, 2, 3, 4, //
@@ -768,8 +873,9 @@ mod tests {
             -5, -6, -7, -8, -9, //
             0, -1, -2, -3, -4, //
         ];
-        let signal = Array3::from_shape_vec([5, 5, 1], signal).unwrap();
-        let filter = Array4::from_shape_vec([2, 3, 3, 1], vec![1; 18]).unwrap();
+        let signal = Array4::from_shape_vec([1, 5, 5, 1], signal)?;
+        let signal = FeatureMap::nhwc(&signal);
+        let filter = Array4::from_shape_vec([2, 3, 3, 1], vec![1; 18])?;
 
         let expected_output = vec![
             // First filter output
@@ -781,20 +887,76 @@ mod tests {
             10, 11, 12, //
             3, 2, 1, //
         ];
-        let expected_output = Array3::from_shape_vec([2, 3, 3], expected_output).unwrap();
+        let expected_output =
+            Array4::from_shape_vec([1, 2, 3, 3], expected_output)?.permuted_axes([0, 2, 3, 1]);
 
-        let params = I8Params {
-            strides: [1, 1],
-            pads: [0; 4],
-            scale: I8Params::convert_scale(BIT_SHIFT, 1.0 / 3.0),
-            output_bias: 0,
-            signal_bias: 0,
-            filter_bias: 0,
-        };
         let biases = &[-12 * MULTIPLIER, -MULTIPLIER];
         let output = convolution
-            .compute(signal.view(), filter.view(), Some(biases), params)
+            .compute_with_biases(signal, &filter, biases)
             .unwrap();
         assert_eq!(output, expected_output);
+
+        // Check filter pinning.
+        let convolution = convolution.with_biased_filters(&filter, biases)?;
+        let output = convolution.compute(signal)?;
+        assert_eq!(output, expected_output);
+
+        let convolution = convolution.pin(FeatureMapShape {
+            batch_size: 1,
+            width: 5,
+            height: 5,
+            channels: 1,
+        })?;
+        let output = convolution.compute(signal)?;
+        assert_eq!(output, expected_output);
+        Ok(())
+    }
+
+    #[test]
+    #[allow(clippy::deref_addrof)] // the problem is in the `ndarray::s!` macro
+    fn f32_batching() -> Result<(), Error> {
+        use ndarray::{s, stack};
+
+        let mut rng = thread_rng();
+        let conv = Convolution::f32(3)?.build(Params::default())?;
+        let filters = Array4::from_shape_fn([2, 3, 3, 4], |_| rng.gen_range(-1.0, 1.0));
+        let conv = conv.with_filters(&filters)?;
+
+        for batch_size in 2..8 {
+            // Test both NHWC and NCHW layouts
+            let signal_shape = if batch_size % 2 == 0 {
+                [batch_size, 5, 5, 4]
+            } else {
+                [batch_size, 4, 5, 5]
+            };
+            let to_map = if batch_size % 2 == 0 {
+                FeatureMap::nhwc
+            } else {
+                FeatureMap::nchw
+            };
+
+            let signal = Array4::from_shape_fn(signal_shape, |_| rng.gen_range(-1.0, 1.0));
+            let batched_output = conv.compute(to_map(signal.view()))?;
+
+            let sample_outputs: Vec<_> = (0..batch_size)
+                .map(|i| {
+                    let sample_signal = signal.slice(s![i..=i, .., .., ..]);
+                    conv.compute(to_map(sample_signal))
+                })
+                .collect::<Result<_, _>>()?;
+            let sample_outputs: Vec<_> = sample_outputs.iter().map(Array4::view).collect();
+            let stitched_output = stack(Axis(0), &sample_outputs)?;
+
+            let max_diff = (batched_output.clone() - stitched_output.clone())
+                .mapv(f32::abs)
+                .fold(0.0, |acc, &x| if x > acc { x } else { acc });
+            assert!(
+                max_diff < f32::EPSILON,
+                "batched={}, stitched={}",
+                batched_output,
+                stitched_output
+            );
+        }
+        Ok(())
     }
 }

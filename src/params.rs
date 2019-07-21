@@ -13,12 +13,16 @@ use crate::{
 };
 
 /// General convolution parameters.
+///
+/// The parameters translate to the parameters of the [`Conv` ONNX operator][onnx-conv].
+///
+/// [onnx-conv]: https://github.com/onnx/onnx/blob/master/docs/Operators.md#conv
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Params {
     /// Strides along spatial dimensions.
     pub strides: [usize; 2],
     /// Pads along spatial dimensions. The first 2 values denote pads at the beginning of
-    /// rows / columns, the second 2 values - pads at the end.
+    /// rows / columns, the second 2 values – pads at the end.
     pub pads: [usize; 4],
     /// Number of groups in the convolution. Each group of filters will be applied to
     /// a subset of input channels.

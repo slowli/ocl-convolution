@@ -8,15 +8,20 @@
 //! than traditional 3 or 4. Computing such convolutions is computationally heavy and can be
 //! effectively accelerated with the help of [OpenCL].
 //!
-//! # Implementation details
+//! # Features
 //!
-//! For now, the crate implements convolutions on two numerical formats:
+//! The crate implements convolutions on two numerical formats:
 //!
 //! - Single-precision floats (`f32`)
 //! - Signed 8-bit integers with 32-bit multiply-add accumulator (this format is frequently denoted
-//!   `int8/32` in deep learning literature)
+//!   `int8/32` in deep learning literature). Quantization parameters are applied uniformly
+//!   to the entire layer.
 //!
-//! In both cases, the convolution uses output-stationary workflow (see, e.g., [this paper] for
+//! For both cases, dilated or grouped convolutions are supported.
+//!
+//! # Implementation details
+//!
+//! The implementation uses output-stationary workflow (see, e.g., [this paper] for
 //! the definition); that is, each element of the output tensor is computed in a single run
 //! of the OpenCL kernel. This minimizes memory overhead, but may not be the fastest algorithm.
 //!
@@ -32,7 +37,7 @@
 //! ## Floating-point convolution
 //!
 //! ```
-//! use ndarray::{Array3, Array4};
+//! use ndarray::Array4;
 //! use rand::{Rng, thread_rng};
 //! use ocl_convolution::{Convolution, FeatureMap, Params};
 //!
@@ -73,7 +78,7 @@
 //! ## Quantized convolution
 //!
 //! ```
-//! use ndarray::{Array3, Array4};
+//! use ndarray::Array4;
 //! use rand::{Rng, thread_rng};
 //! use ocl_convolution::{Convolution, I8Params, FeatureMap, Params};
 //!

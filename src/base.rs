@@ -13,7 +13,7 @@ use crate::{
     ConvElement,
 };
 
-/// Convolution builder. The same builder can be used to create multiple `Convolutions`
+/// Convolution builder. The same builder can be used to create multiple `Convolution`s
 /// which share the same spatial size.
 #[derive(Debug)]
 pub struct ConvolutionBuilder<T> {

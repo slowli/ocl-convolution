@@ -1,7 +1,11 @@
+use lazy_static::lazy_static;
 use ndarray::{Array4, ArrayView4};
-use ocl::{builders::KernelBuilder, prm::Uint3, Buffer, Context, Kernel, ProQue, Queue};
+use ocl::{
+    builders::KernelBuilder, prm::Uint3, Buffer, Context, Device, Kernel, Platform, ProQue,
+    Program, Queue,
+};
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Mutex};
 
 use crate::{
     buffers::{FeatureMap, FeatureMapShape, Filters, InputAndOutput, Pinned},
@@ -31,14 +35,36 @@ impl<T: ConvElement> ConvolutionBuilder<T> {
             "Even convolution sizes are not supported"
         );
 
-        let mut program_builder = ocl::Program::builder();
+        let mut program_builder = Program::builder();
         program_builder.cmplr_def("FILTER_SIZE", filter_size as i32);
         for &(name, value) in defines {
             program_builder.cmplr_def(name, value);
         }
         program_builder.source(source);
 
-        let program = ProQue::builder().prog_bldr(program_builder).build()?;
+        // For some reason, certain OpenCL implementations (e.g., POCL) do not work well
+        // when the list of devices for a platform is queried from multiple threads.
+        // Hence, we introduce a `Mutex` to serialize these calls.
+        lazy_static! {
+            static ref MUTEX: Mutex<()> = Mutex::new(());
+        }
+        let (platform, device) = {
+            let _lock = MUTEX.lock().ok();
+            let platform = Platform::first()?;
+            (platform, Device::first(platform)?)
+        };
+
+        let context = Context::builder()
+            .platform(platform)
+            .devices(&device)
+            .build()?;
+        let program = ProQue::new(
+            context.clone(),
+            Queue::new(&context, device, None)?,
+            program_builder.build(&context)?,
+            None::<usize>,
+        );
+
         Ok(Self {
             program,
             filter_size,

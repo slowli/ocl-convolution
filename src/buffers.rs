@@ -1,7 +1,5 @@
 //! OpenCL buffer wrappers.
 
-#![allow(missing_docs)]
-
 use ndarray::{Array4, ArrayView4};
 use ocl::{flags, prm::Uint3, Buffer, Kernel};
 
@@ -9,11 +7,16 @@ use std::borrow::Cow;
 
 use crate::{ConvElement, Convolution, Params, WithParams};
 
+/// Shape of a `FeatureMap`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FeatureMapShape {
+    /// Number of samples constituting the map.
     pub batch_size: usize,
+    /// Spatial width.
     pub width: usize,
+    /// Spatial height.
     pub height: usize,
+    /// Number of channels.
     pub channels: usize,
 }
 
@@ -50,22 +53,34 @@ impl FeatureMapShape {
     }
 }
 
+/// Memory layout of `FeatureMap`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Layout {
-    /// `NCHW` order
+    /// `NCHW` / "channels-first" layout. In this layout, channels are an outer dimension compared
+    /// to spatial width and height.
     ChannelsFirst = 0,
-    /// `NHWC` order
+    /// `NHWC` / "channels-last" layout. In this layout, channels are the innermost dimension.
+    ///
+    /// This layout is preferred because it is used internally by the OpenCL code in order
+    /// to efficiently vectorize multiply-add operations.
     ChannelsLast = 1,
 }
 
+/// Feature map, i.e., a signal or output of the convolution operation.
+///
+/// Internally, a `FeatureMap` is a thin wrapper around [`ArrayView`]
+/// that additionally indicates the memory layout of the map.
+///
+/// [`ArrayView`]: https://docs.rs/ndarray/0.12.1/ndarray/type.ArrayView.html
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FeatureMap<'a, T: ConvElement> {
+pub struct FeatureMap<'a, T> {
     layout: Layout,
     inner: ArrayView4<'a, T>,
 }
 
 impl<'a, T: ConvElement> FeatureMap<'a, T> {
+    /// Constructs a map from an NCHW-ordered tensor.
     pub fn nchw(array: impl Into<ArrayView4<'a, T>>) -> Self {
         Self {
             layout: Layout::ChannelsFirst,
@@ -73,6 +88,7 @@ impl<'a, T: ConvElement> FeatureMap<'a, T> {
         }
     }
 
+    /// Constructs a map from an NHWC-ordered tensor.
     pub fn nhwc(array: impl Into<ArrayView4<'a, T>>) -> Self {
         Self {
             layout: Layout::ChannelsLast,
@@ -80,10 +96,12 @@ impl<'a, T: ConvElement> FeatureMap<'a, T> {
         }
     }
 
+    /// Gets the layout of this map.
     pub fn layout(self) -> Layout {
         self.layout
     }
 
+    /// Gets the shape of this map.
     pub fn shape(self) -> FeatureMapShape {
         match self.layout {
             Layout::ChannelsFirst => FeatureMapShape::from_nchw_slice(self.inner.shape()),

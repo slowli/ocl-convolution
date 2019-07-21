@@ -26,6 +26,86 @@
 //! [OpenCL]: https://www.khronos.org/opencl/
 //! [this paper]: https://dl.acm.org/citation.cfm?id=3001177
 //! [`Convolution`]: struct.Convolution.html
+//!
+//! # Examples
+//!
+//! ## Floating-point convolution
+//!
+//! ```
+//! use ndarray::{Array3, Array4};
+//! use rand::{Rng, thread_rng};
+//! use ocl_convolution::{Convolution, FeatureMap, Params};
+//!
+//! # fn main() -> Result<(), ocl::Error> {
+//! let convolution = Convolution::f32(3)?.build(Params {
+//!     strides: [1, 1],
+//!     pads: [0; 4],
+//!     dilation: [1, 1],
+//!     groups: 1,
+//! })?;
+//!
+//! // Generate random signal with 6x6 spatial dims and 3 channels.
+//! let mut rng = thread_rng();
+//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-1.0, 1.0));
+//! // Construct two 3x3 spatial filters.
+//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-1.0, 1.0));
+//! // Perform the convolution. The output should have 4x4 spatial dims
+//! // and contain 2 channels (1 per each filter). The output layout will
+//! // be the same as in the signal.
+//! let output = convolution.compute(
+//!     // `FeatureMap` wraps `ArrayView4` with information about
+//!     // memory layout (which is "channels-last" / NHWC in this case).
+//!     FeatureMap::nhwc(&signal),
+//!     &filters,
+//! )?;
+//! assert_eq!(output.shape(), [1, 4, 4, 2]);
+//!
+//! // For increased efficiency, we may pin filter memory.
+//! // This is especially useful when the same filters are convolved
+//! // with multiple signals.
+//! let convolution = convolution.with_filters(&filters)?;
+//! let new_output = convolution.compute(FeatureMap::nhwc(&signal))?;
+//! assert_eq!(output, new_output);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Quantized convolution
+//!
+//! ```
+//! use ndarray::{Array3, Array4};
+//! use rand::{Rng, thread_rng};
+//! use ocl_convolution::{Convolution, I8Params, FeatureMap, Params};
+//!
+//! # fn main() -> Result<(), ocl::Error> {
+//! const BIT_SHIFT: u8 = 16;
+//! let params = I8Params {
+//!     common: Params::default(),
+//!     // These params are found by profiling; here, they are
+//!     // chosen randomly.
+//!     bit_shift: BIT_SHIFT,
+//!     scale: I8Params::convert_scale(BIT_SHIFT, 0.1),
+//!     output_bias: -10,
+//!     signal_bias: 20,
+//!     filter_bias: -5,
+//! };
+//! let convolution = Convolution::i8(3)?.build(params)?;
+//!
+//! // Generate random signal with 6x6 spatial dims and 3 channels.
+//! let mut rng = thread_rng();
+//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-127, 127));
+//! // Construct two 3x3 spatial filters.
+//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-127, 127));
+//! // Perform the convolution. The output should have 4x4 spatial dims
+//! // and contain 2 channels (1 per each filter).
+//! let output = convolution.compute(
+//!     FeatureMap::nhwc(&signal),
+//!     &filters,
+//! )?;
+//! assert_eq!(output.shape(), [1, 4, 4, 2]);
+//! # Ok(())
+//! # }
+//! ```
 
 #![deny(missing_docs, missing_debug_implementations)]
 
@@ -199,89 +279,6 @@ fn create_io<T: ConvElement, U: WithParams>(
 /// Pinning OpenCL buffers makes computations faster, but can lead to out-of-memory errors.
 ///
 /// [`ConvElement`]: trait.ConvElement.html
-///
-/// # Examples
-///
-/// ## Floating-point convolution
-///
-/// ```
-/// use ndarray::{Array3, Array4};
-/// use rand::{Rng, thread_rng};
-/// use std::iter;
-/// # use ocl_convolution::{Convolution, Params};
-///
-/// # fn main() -> Result<(), ocl::Error> {
-/// let convolution = Convolution::new(3, Params {
-///     strides: [1, 1],
-///     pads: [0; 4],
-///     dilation: [1, 1],
-///     groups: 1,
-/// })?;
-///
-/// // Generate random signal with 6x6 spatial dims and 3 channels.
-/// let mut rng = thread_rng();
-/// let mut signal = Array3::zeros([6, 6, 3]);
-/// signal.map_mut(|x| *x = rng.gen_range(-1.0, 1.0));
-/// // Construct two 3x3 spatial filters.
-/// let mut filters = Array4::zeros([2, 3, 3, 3]);
-/// filters.map_mut(|x| *x = rng.gen_range(-1.0, 1.0));
-/// // Perform the convolution. The output should have 4x4 spatial dims
-/// // and contain 2 channels (1 per each filter).
-/// let output = convolution.compute(
-///     signal.view(),
-///     filters.view(),
-/// )?;
-/// assert_eq!(output.shape(), [2, 4, 4]);
-///
-/// // For increased efficiency, we may pin filter memory.
-/// // This is especially useful when the same filters are convolved
-/// // with multiple signals.
-/// let convolution = convolution.with_filters(filters.view())?;
-/// let new_output = convolution.compute(signal.view())?;
-/// assert_eq!(output, new_output);
-/// # Ok(())
-/// # }
-/// ```
-///
-/// ## Quantized convolution
-///
-/// ```
-/// use ndarray::{Array3, Array4};
-/// use rand::{Rng, thread_rng};
-/// use std::iter;
-/// # use ocl_convolution::{Convolution, I8Params, Params};
-///
-/// # fn main() -> Result<(), ocl::Error> {
-/// const BIT_SHIFT: u8 = 16;
-/// let params = I8Params {
-///     common: Params::default(),
-///     // These params are found by profiling; here, they are
-///     // chosen randomly.
-///     bit_shift: BIT_SHIFT,
-///     scale: I8Params::convert_scale(BIT_SHIFT, 0.1),
-///     output_bias: -10,
-///     signal_bias: 20,
-///     filter_bias: -5,
-/// };
-/// let convolution = Convolution::quantized(3, params)?;
-///
-/// // Generate random signal with 6x6 spatial dims and 3 channels.
-/// let mut rng = thread_rng();
-/// let mut signal = Array3::zeros([6, 6, 3]);
-/// signal.map_mut(|x| *x = rng.gen_range(-127, 127));
-/// // Construct two 3x3 spatial filters.
-/// let mut filters = Array4::zeros([2, 3, 3, 3]);
-/// filters.map_mut(|x| *x = rng.gen_range(-127, 127));
-/// // Perform the convolution. The output should have 4x4 spatial dims
-/// // and contain 2 channels (1 per each filter).
-/// let output = convolution.compute(
-///     signal.view(),
-///     filters.view(),
-/// )?;
-/// assert_eq!(output.shape(), [2, 4, 4]);
-/// # Ok(())
-/// # }
-/// ```
 #[derive(Debug)]
 pub struct Convolution<T: WithParams> {
     size: usize,
@@ -333,8 +330,7 @@ impl Convolution<f32> {
 /// | `scale`          | `S.scale * F.scale / O.scale` |
 ///
 /// `scale` is represented as a fixed-point number with [`bit_shift`] binary digits after
-/// the point. Note that filter biases `B` are assumed to be unbiased and upscaled; they are
-/// not transformed during the computation.
+/// the point. Note that filter biases `B` are not transformed during the computation.
 ///
 /// # Computing convolution
 ///

@@ -1,14 +1,11 @@
 use ndarray::{Array4, ArrayView4};
-use ocl::{
-    builders::KernelBuilder, enums::PlatformInfo, prm::Uint3, Buffer, Context, Device, Kernel,
-    Platform, Program, Queue,
-};
+use ocl::{builders::KernelBuilder, prm::Uint3, Buffer, Context, Kernel, ProQue, Queue};
 
 use std::marker::PhantomData;
 
 use crate::{
-    buffers::{FeatureMap, FeatureMapShape, Filters, InputAndOutput, Layout, Pinned},
-    params::WithParams,
+    buffers::{FeatureMap, FeatureMapShape, Filters, InputAndOutput, Pinned},
+    params::{OutputParams, WithParams},
     ConvElement,
 };
 
@@ -16,9 +13,7 @@ use crate::{
 /// which share the same spatial size.
 #[derive(Debug)]
 pub struct ConvolutionBuilder<T> {
-    program: Program,
-    queue: Queue,
-    context: Context,
+    program: ProQue,
     filter_size: usize,
     _t: PhantomData<T>,
 }
@@ -36,39 +31,23 @@ impl<T: ConvElement> ConvolutionBuilder<T> {
             "Even convolution sizes are not supported"
         );
 
-        let platform = Platform::first()?;
-        let device = Device::first(platform)?;
-        let version = platform.info(PlatformInfo::Version)?.as_opencl_version()?;
-        let context = Context::builder()
-            .platform(platform)
-            .devices(device)
-            .build()?;
         let mut program_builder = ocl::Program::builder();
         program_builder.cmplr_def("FILTER_SIZE", filter_size as i32);
         for &(name, value) in defines {
             program_builder.cmplr_def(name, value);
         }
-        if version >= [2, 0].into() {
-            program_builder.cmplr_opt("-cl-std=CL2.0");
-        }
-        let program = program_builder.source(source).build(&context)?;
-        let queue = Queue::new(&context, device, None)?;
+        program_builder.source(source);
+
+        let program = ProQue::builder().prog_bldr(program_builder).build()?;
         Ok(Self {
             program,
-            queue,
-            context,
             filter_size,
             _t: PhantomData,
         })
     }
 
     fn kernel_builder(&self) -> KernelBuilder {
-        let mut builder = KernelBuilder::new();
-        builder
-            .name("conv")
-            .program(&self.program)
-            .queue(self.queue.clone());
-        builder
+        self.program.kernel_builder("conv")
     }
 }
 
@@ -124,8 +103,8 @@ impl<T: ConvElement> Base<T> {
     pub fn new(builder: &ConvolutionBuilder<T>, params: T::Params) -> ocl::Result<Self> {
         let kernel = builder
             .kernel_builder()
-            .arg_named("convolved", None::<&Buffer<T>>)
-            .arg_named("convolved_layout", Layout::ChannelsLast as u8)
+            .arg_named("output", None::<&Buffer<T>>)
+            .arg_named("out_params", OutputParams::default())
             .arg_named("signal", None::<&Buffer<T>>)
             .arg_named("signal_dims", Uint3::new(0, 0, 0))
             .arg_named("filters", None::<&Buffer<T>>)
@@ -137,7 +116,7 @@ impl<T: ConvElement> Base<T> {
             params,
             kernel,
             buffers: T::default(),
-            context: builder.context.clone(),
+            context: builder.program.context().clone(),
         })
     }
 

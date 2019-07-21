@@ -35,6 +35,11 @@ struct __attribute__((packed)) Params {
     uint2 dilation;
 };
 
+struct __attribute__((packed)) OutputParams {
+    uint batch_size;
+    uchar layout;
+};
+
 /// Computes convolution of two tensors.
 ///
 /// - `signal` should have `HxWxC` layout (i.e., the channel dimension is the inner-most one).
@@ -47,23 +52,24 @@ struct __attribute__((packed)) Params {
 /// The kernel should be launched with `[K_H * H', K_W * W', C]` workgroups,
 /// with `[K_H, K_W]` items per group. Each group will compute a single output point.
 __kernel void conv(
-    __global float *convolved,
-    uchar convolved_layout,
+    __global float *output,
+    struct OutputParams out_params,
     __constant float *signal,
     uint3 signal_dims,
     __constant float *filters,
     __constant float *filter_biases,
     struct Params params
 ) {
-    size_t convolved_h = get_num_groups(0) * get_local_size(0);
-    size_t convolved_w = get_num_groups(1) * get_local_size(1);
-    size_t convolved_ch = get_num_groups(2) * get_local_size(2);
+    size_t output_h = get_num_groups(0) * get_local_size(0) / out_params.batch_size;
+    size_t output_w = get_num_groups(1) * get_local_size(1);
+    size_t output_ch = get_num_groups(2) * get_local_size(2);
 
-    size_t x = get_global_id(0);
+    size_t batch_idx = get_global_id(0) / output_h;
+    size_t x = get_global_id(0) % output_h;
     size_t y = get_global_id(1);
     size_t filter = get_global_id(2);
     size_t channels_per_group = signal_dims.z / params.groups;
-    size_t group = filter * params.groups / convolved_ch;
+    size_t group = filter * params.groups / output_ch;
 
     float sum = (filter_biases == NULL) ? 0.0 : filter_biases[filter];
 
@@ -80,6 +86,7 @@ __kernel void conv(
 
             if ((input_pt.x != -1) || (input_pt.y != -1)) {
                 size_t signal_offset =
+                    batch_idx * signal_dims.x * signal_dims.y * signal_dims.z +
                     input_pt.x * signal_dims.y * signal_dims.z +
                     input_pt.y * signal_dims.z +
                     channels_per_group * group;
@@ -112,15 +119,18 @@ __kernel void conv(
         }
     }
 
-    size_t output_offset = 0;
-    if (convolved_layout == LAYOUT_NCHW) {
-        output_offset = filter * convolved_h * convolved_w +
-            x * convolved_w +
-            y;
-    } else if (convolved_layout == LAYOUT_NHWC) {
-        output_offset = x * convolved_w * convolved_ch +
-            y * convolved_ch +
-            filter;
+    size_t out_offset = output_h * output_w * output_ch * batch_idx;
+    switch (out_params.layout) {
+        case LAYOUT_NCHW:
+            out_offset += filter * output_h * output_w +
+                x * output_w +
+                y;
+            break;
+        case LAYOUT_NHWC:
+            out_offset += x * output_w * output_ch +
+                y * output_ch +
+                filter;
+            break;
     }
-    convolved[output_offset] = sum;
+    output[out_offset] = sum;
 }

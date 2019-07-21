@@ -5,7 +5,7 @@ use ocl::{flags, prm::Uint3, Buffer, Kernel};
 
 use std::borrow::Cow;
 
-use crate::{base::Base, ConvElement, Params, WithParams};
+use crate::{base::Base, params::OutputParams, ConvElement, Params, WithParams};
 
 /// Shape of a `FeatureMap`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -178,9 +178,8 @@ impl<T: ConvElement> Filters<T> {
             .transpose()?;
 
         conv.kernel().set_arg("filters", &filters_buffer)?;
-        if let Some(ref biases) = filter_biases {
-            conv.kernel().set_arg("filter_biases", biases)?;
-        }
+        conv.kernel()
+            .set_arg("filter_biases", filter_biases.as_ref())?;
 
         Ok(Self {
             inner: filters_buffer,
@@ -272,40 +271,21 @@ impl<T: ConvElement> InputAndOutput<T> {
 
     pub fn execute(&self, kernel: &Kernel, out_layout: Layout) -> ocl::Result<Array4<T>> {
         let s = self.output_shape;
-        kernel.set_arg("convolved_layout", out_layout as u8)?;
+        kernel.set_arg(
+            "out_params",
+            OutputParams {
+                batch_size: s.batch_size as u32,
+                layout: out_layout,
+            },
+        )?;
+        kernel.set_arg("output", &self.output_buffer)?;
+        kernel.set_arg("signal", &self.signal_buffer)?;
 
-        for i in 0..s.batch_size {
-            let output_slice = if s.batch_size > 1 {
-                let out_sample_len = s.width * s.height * s.channels;
-                Cow::Owned(self.output_buffer.create_sub_buffer(
-                    Some(flags::MEM_HOST_READ_ONLY | flags::MEM_WRITE_ONLY),
-                    i * out_sample_len,
-                    out_sample_len,
-                )?)
-            } else {
-                Cow::Borrowed(&self.output_buffer)
-            };
-            kernel.set_arg("convolved", output_slice.as_ref())?;
-
-            let signal_slice = if s.batch_size > 1 {
-                let signal_sample_len =
-                    (self.signal_dims[0] * self.signal_dims[1] * self.signal_dims[2]) as usize;
-                Cow::Owned(self.signal_buffer.create_sub_buffer(
-                    Some(flags::MEM_READ_ONLY),
-                    i * signal_sample_len,
-                    signal_sample_len,
-                )?)
-            } else {
-                Cow::Borrowed(&self.signal_buffer)
-            };
-            kernel.set_arg("signal", signal_slice.as_ref())?;
-
-            let command = kernel
-                .cmd()
-                .global_work_size([s.height, s.width, s.channels]);
-            unsafe {
-                command.enq()?;
-            }
+        let command = kernel
+            .cmd()
+            .global_work_size([s.height * s.batch_size, s.width, s.channels]);
+        unsafe {
+            command.enq()?;
         }
 
         let mut output_data = vec![T::default(); self.output_buffer.len()];

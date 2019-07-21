@@ -948,10 +948,15 @@ mod tests {
             let sample_outputs: Vec<_> = sample_outputs.iter().map(Array4::view).collect();
             let stitched_output = stack(Axis(0), &sample_outputs)?;
 
-            let max_diff = (batched_output - stitched_output)
+            let max_diff = (batched_output.clone() - stitched_output.clone())
                 .mapv(f32::abs)
                 .fold(0.0, |acc, &x| if x > acc { x } else { acc });
-            assert!(max_diff < f32::EPSILON);
+            assert!(
+                max_diff < f32::EPSILON,
+                "batched={}, stitched={}",
+                batched_output,
+                stitched_output
+            );
         }
         Ok(())
     }

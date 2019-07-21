@@ -7,7 +7,10 @@ use ocl::{
 
 use std::fmt;
 
-use crate::{ConvElement, Filters, Pinned};
+use crate::{
+    buffers::{Filters, Layout, Pinned},
+    ConvElement,
+};
 
 /// General convolution parameters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -131,6 +134,24 @@ impl From<I8Params> for ClI8Params {
 
 // Safety ensured by the same alignment here and in OCL code.
 unsafe impl OclPrm for ClI8Params {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[repr(C, packed)]
+pub struct OutputParams {
+    pub batch_size: u32,
+    pub layout: Layout,
+}
+
+unsafe impl OclPrm for OutputParams {}
+
+impl Default for OutputParams {
+    fn default() -> Self {
+        Self {
+            batch_size: 0,
+            layout: Layout::ChannelsLast,
+        }
+    }
+}
 
 /// Type that can be associated with convolution parameters.
 pub trait WithParams {

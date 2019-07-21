@@ -3,9 +3,16 @@ name = "ocl-convolution"
 version = "0.1.0"
 authors = ["Alex Ostrovski <ostrovski.alex@gmail.com>"]
 edition = "2018"
-description = "OpenCL-accelerated 2D convolutions"
-readme = "README.md"
 license = "Apache-2.0"
+keywords = ["convolution", "neural network", "deep learning", "OpenCL"]
+readme = "README.md"
+categories = ["science"]
+description = "OpenCL-accelerated 2D convolutions"
+repository = "https://github.com/slowli/ocl-convolution"
+
+[badges]
+travis-ci = { repository = "slowli/ocl-convolution" }
+maintenance = { status = "experimental" }
 
 [dependencies]
 lazy_static = "1.3.0"

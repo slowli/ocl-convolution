@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Bencher, Criterion, ParameterizedBenchmark};
+use criterion::{criterion_group, criterion_main, Bencher, BenchmarkId, Criterion};
 use ndarray::{Array4, Axis};
 use rand::{Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
@@ -14,6 +14,18 @@ enum Memory {
     Simple,
     Filters,
     Pinned,
+}
+
+impl Memory {
+    const ALL: &'static [Self] = &[Self::Simple, Self::Filters, Self::Pinned];
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Simple => "simple",
+            Self::Filters => "with_filters",
+            Self::Pinned => "pinned",
+        }
+    }
 }
 
 fn run_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
@@ -142,52 +154,46 @@ fn run_i8_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
 }
 
 fn basic_benches(criterion: &mut Criterion) {
-    criterion.bench(
-        "f32_conv",
-        ParameterizedBenchmark::new(
-            "channels",
-            |bencher, &&channels| run_convolution(bencher, channels, Memory::Simple),
-            CHANNELS,
-        )
-        .sample_size(SAMPLE_SIZE)
-        .with_function("with_filters", |bencher, &&channels| {
-            run_convolution(bencher, channels, Memory::Filters)
-        })
-        .with_function("pinned", |bencher, &&channels| {
-            run_convolution(bencher, channels, Memory::Pinned)
-        }),
-    );
+    let mut f32_benches = criterion.benchmark_group("f32_conv");
+    f32_benches.sample_size(SAMPLE_SIZE);
+    for &channels in CHANNELS {
+        for &mem in Memory::ALL {
+            f32_benches.bench_with_input(
+                BenchmarkId::new(mem.as_str(), channels),
+                &channels,
+                |bencher, &channels| run_convolution(bencher, channels, mem),
+            );
+        }
+    }
+    f32_benches.finish();
 
-    criterion.bench(
-        "batched_f32_conv",
-        ParameterizedBenchmark::new(
-            "channels",
-            |bencher, &&channels| run_batched_convolution(bencher, channels, false),
-            &CHANNELS[1..4],
-        )
-        .sample_size(SAMPLE_SIZE)
-        .with_function("seq", |bencher, &&channels| {
-            run_batched_convolution(bencher, channels, true)
-        }),
-    );
+    let mut batched_benches = criterion.benchmark_group("batched_f32_conv");
+    for &channels in CHANNELS {
+        batched_benches.bench_with_input(
+            BenchmarkId::new("batched", channels),
+            &channels,
+            |bencher, &channels| run_batched_convolution(bencher, channels, false),
+        );
+        batched_benches.bench_with_input(
+            BenchmarkId::new("seq", channels),
+            &channels,
+            |bencher, &channels| run_batched_convolution(bencher, channels, true),
+        );
+    }
+    batched_benches.finish();
 
-    criterion.bench(
-        "i8_conv",
-        ParameterizedBenchmark::new(
-            "channels",
-            |bencher, &&channels| {
-                run_i8_convolution(bencher, channels, Memory::Simple);
-            },
-            CHANNELS,
-        )
-        .sample_size(SAMPLE_SIZE)
-        .with_function("with_filters", |bencher, &&channels| {
-            run_i8_convolution(bencher, channels, Memory::Filters)
-        })
-        .with_function("pinned", |bencher, &&channels| {
-            run_i8_convolution(bencher, channels, Memory::Pinned)
-        }),
-    );
+    let mut i8_benches = criterion.benchmark_group("i8_conv");
+    i8_benches.sample_size(SAMPLE_SIZE);
+    for &channels in CHANNELS {
+        for &mem in Memory::ALL {
+            i8_benches.bench_with_input(
+                BenchmarkId::new(mem.as_str(), channels),
+                &channels,
+                |bencher, &channels| run_i8_convolution(bencher, channels, mem),
+            );
+        }
+    }
+    i8_benches.finish();
 }
 
 criterion_group!(benches, basic_benches);

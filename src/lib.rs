@@ -166,7 +166,12 @@ impl ConvolutionBuilder<i8> {
 pub struct Convolution<T: ConvElement>(Base<T>);
 
 impl Convolution<f32> {
-    /// Creates a new floating-point convolution builder.
+    /// Creates a new floating-point convolution builder. `size` determines the filter size
+    /// and should be odd (1, 3, 5, ...).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the filter `size` is even.
     pub fn f32(size: usize) -> ocl::Result<ConvolutionBuilder<f32>> {
         ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 32)], SOURCE)
     }
@@ -229,7 +234,12 @@ impl Convolution<f32> {
 /// [`bit_shift`]: struct.I8Params.html#field.bit_shift
 /// [this paper]: https://arxiv.org/abs/1805.00907
 impl Convolution<i8> {
-    /// Creates a new `i8` convolution builder.
+    /// Creates a new `i8` convolution builder. `size` determines the filter size
+    /// and should be odd (1, 3, 5, ...).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the filter `size` is even.
     pub fn i8(size: usize) -> ocl::Result<ConvolutionBuilder<i8>> {
         ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 8)], SOURCE)
     }

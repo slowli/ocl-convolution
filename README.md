@@ -2,7 +2,7 @@
 
 [![Travis Build Status](https://img.shields.io/travis/com/slowli/ocl-convolution/master.svg?label=Linux%20Build)](https://travis-ci.com/slowli/ocl-convolution) 
 [![License: Apache-2.0](https://img.shields.io/github/license/slowli/ocl-convolution.svg)](https://github.com/slowli/ocl-convolution/blob/master/LICENSE)
-![rust 1.34.0+ required](https://img.shields.io/badge/rust-1.34.0+-blue.svg?label=Required%20Rust) 
+![rust 1.39.0+ required](https://img.shields.io/badge/rust-1.39.0+-blue.svg?label=Required%20Rust) 
 
 **Documentation:**
 [![crate docs (master)](https://img.shields.io/badge/master-yellow.svg?label=docs)](https://slowli.github.io/ocl-convolution/ocl_convolution/) 
@@ -27,7 +27,7 @@ For quick testing, one may use [POCL](https://github.com/pocl/pocl); it is open 
 and not tied to hardware (at the cost of being CPU-based, i.e., orders of magnitude
 slower than OpenCL implementations by GPU vendors).
 POCL may be installed from sources with the commands like these
-(showcased here for Ubuntu Xenial):
+(showcased here for Ubuntu Bionic):
 
 ```bash
 # Install utils for build
@@ -36,18 +36,18 @@ apt-get install build-essential cmake pkg-config libhwloc-dev zlib1g-dev
 apt-get install ocl-icd-libopencl1 ocl-icd-dev ocl-icd-opencl-dev clinfo
 # Install LLVM / Clang from the official APT repository
 wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - 
-add-apt-repository 'deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-8 main'
+add-apt-repository 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main'
 apt-get update
-apt-get install clang-8 libclang-8-dev llvm-8 llvm-8-dev
+apt-get install clang-9 libclang-9-dev llvm-9 llvm-9-dev
 
 # Get POCL sources
-export POCL_VER=1.3 # latest stable version
+export POCL_VER=1.4 # latest stable version
 curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
 tar xf "pocl-$POCL_VER.tar.gz"
 # Build POCL from the sources
 cd pocl-$POCL_VER
 mkdir build && cd build
-cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-8 -DCMAKE_INSTALL_PREFIX=/usr ..
+cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 -DCMAKE_INSTALL_PREFIX=/usr ..
 make
 
 # Verify installation

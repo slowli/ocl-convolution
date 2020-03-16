@@ -42,7 +42,7 @@ fn main() {
     let mut processed_code = String::new();
     for line in cl_code.lines().filter_map(process_line) {
         let last_char = processed_code.as_bytes().last().cloned();
-        if line.starts_with('#') && !last_char.is_none() && last_char != Some(b'\n') {
+        if line.starts_with('#') && last_char.is_some() && last_char != Some(b'\n') {
             processed_code.push('\n');
         }
         processed_code.push_str(&line);

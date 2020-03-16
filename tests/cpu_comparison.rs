@@ -26,7 +26,7 @@ fn slow_compute<T: LinalgScalar + ops::AddAssign>(
     let group_output_ch = output_ch / params.groups;
 
     let output = bias
-        .map(|bias| Array1::from_vec(bias.to_vec()))
+        .map(|bias| Array1::from(bias.to_vec()))
         .unwrap_or_else(|| Array1::zeros([output_ch]));
     let mut output = output
         .broadcast([output_h, output_y, output_ch])

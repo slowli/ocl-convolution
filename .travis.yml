@@ -1,9 +1,11 @@
-dist: xenial
+os: linux
+dist: bionic
+
 addons:
   apt:
     sources:
       - key_url: https://apt.llvm.org/llvm-snapshot.gpg.key
-        sourceline: 'deb [arch=amd64] http://apt.llvm.org/xenial/ llvm-toolchain-xenial-8 main'
+        sourceline: 'deb [arch=amd64] http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main'
     packages:
       # General stuff
       - build-essential
@@ -17,10 +19,10 @@ addons:
       - ocl-icd-opencl-dev
       - clinfo
       # LLVM-related stuff
-      - clang-8
-      - libclang-8-dev
-      - llvm-8
-      - llvm-8-dev
+      - clang-9
+      - libclang-9-dev
+      - llvm-9
+      - llvm-9-dev
 
 language: rust
 
@@ -33,12 +35,12 @@ branches:
     - /-release$/
 
 rust:
-  - 1.34.0
+  - 1.39.0
 
 env:
   global:
-    - DEADLINKS_VERS=0.3.0
-    - POCL_VER=1.3
+    - DEADLINKS_VERS=0.4.1
+    - POCL_VER=1.4
 
 cache:
   cargo: true
@@ -54,7 +56,7 @@ before_install:
       tar xf "pocl-$POCL_VER.tar.gz"
       cd pocl-$POCL_VER
       mkdir -p build && cd build
-      cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-8 -DCMAKE_INSTALL_PREFIX=/usr ..
+      cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 -DCMAKE_INSTALL_PREFIX=/usr ..
       make
       cd $TRAVIS_BUILD_DIR
     fi
@@ -69,8 +71,8 @@ install:
 
 script:
   - cargo fmt --all -- --check
-  - cargo clippy --all --tests --examples --benches -- -D warnings
-  - cargo test
+  - cargo clippy --all --all-targets -- -D warnings
+  - cargo test --all-targets
   - cargo clean --doc && cargo doc --no-deps && cargo deadlinks --dir target/doc
 
 before_deploy:

@@ -112,6 +112,7 @@
 //! # }
 //! ```
 
+#![doc(html_root_url = "https://docs.rs/ocl-convolution/0.2.0")]
 #![deny(missing_docs, missing_debug_implementations)]
 
 use ndarray::{Array4, ArrayView4};

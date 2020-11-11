@@ -32,6 +32,7 @@ criterion = "0.3.1"
 failure = "0.1.7"
 rand = "0.7.3"
 rand_xorshift = "0.2.0"
+version-sync = "0.9.1"
 
 [[bench]]
 name = "basics"

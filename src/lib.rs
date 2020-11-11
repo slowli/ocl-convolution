@@ -114,6 +114,14 @@
 
 #![doc(html_root_url = "https://docs.rs/ocl-convolution/0.2.0")]
 #![deny(missing_docs, missing_debug_implementations)]
+#![warn(missing_debug_implementations, missing_docs, bare_trait_objects)]
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::module_name_repetitions,
+    clippy::doc_markdown
+)]
 
 use ndarray::{Array4, ArrayView4};
 use ocl::OclPrm;
@@ -496,6 +504,7 @@ mod tests {
             )?,
         );
 
+        #[allow(clippy::cast_precision_loss)] // no loss since `i` values are small
         for i in 1..=5 {
             let signal = Array4::from_elem([1, 5 + i, 5 + i, 1], i as f32);
             assert!(convolution.compute(FeatureMap::nhwc(&signal)).is_ok());
@@ -515,6 +524,8 @@ mod tests {
                 vec![54., 63., 72., 99., 108., 117., 144., 153., 162.],
             )?,
         );
+
+        #[allow(clippy::cast_precision_loss)] // no loss since `i` values are small
         for i in 1..=5 {
             let signal = Array4::from_elem([1, 5, 5, 1], i as f32);
             assert!(pinned.compute(FeatureMap::nhwc(&signal)).is_ok());
@@ -744,6 +755,8 @@ mod tests {
         })?;
 
         let mut signal = vec![0.0; 100];
+
+        #[allow(clippy::cast_precision_loss)] // no loss since `i` values are small
         for (i, val) in signal.iter_mut().enumerate() {
             *val = (i / 4) as f32;
         }

@@ -5,7 +5,7 @@ use ocl::{
     Program, Queue,
 };
 
-use std::{marker::PhantomData, sync::Mutex};
+use std::{convert::TryFrom, marker::PhantomData, sync::Mutex};
 
 use crate::{
     buffers::{FeatureMap, FeatureMapShape, Filters, InputAndOutput, Pinned},
@@ -36,7 +36,10 @@ impl<T: ConvElement> ConvolutionBuilder<T> {
         );
 
         let mut program_builder = Program::builder();
-        program_builder.cmplr_def("FILTER_SIZE", filter_size as i32);
+        program_builder.cmplr_def(
+            "FILTER_SIZE",
+            i32::try_from(filter_size).expect("Cannot convert filter size to i32"),
+        );
         for &(name, value) in defines {
             program_builder.cmplr_def(name, value);
         }

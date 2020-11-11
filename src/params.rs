@@ -5,7 +5,7 @@ use ocl::{
     OclPrm,
 };
 
-use std::fmt;
+use std::{convert::TryFrom, fmt};
 
 use crate::{
     buffers::{Filters, Layout, Pinned},
@@ -54,15 +54,21 @@ pub struct ClParams {
 impl From<Params> for ClParams {
     fn from(value: Params) -> Self {
         ClParams {
-            strides: Uint2::new(value.strides[0] as u32, value.strides[1] as u32),
-            pads: Uint4::new(
-                value.pads[0] as u32,
-                value.pads[1] as u32,
-                value.pads[2] as u32,
-                value.pads[3] as u32,
+            strides: Uint2::new(
+                u32::try_from(value.strides[0]).expect("Cannot convert stride to `u32`"),
+                u32::try_from(value.strides[1]).expect("Cannot convert stride to `u32`"),
             ),
-            groups: value.groups as u32,
-            dilation: Uint2::new(value.dilation[0] as u32, value.dilation[1] as u32),
+            pads: Uint4::new(
+                u32::try_from(value.pads[0]).expect("Cannot convert pad to `u32`"),
+                u32::try_from(value.pads[1]).expect("Cannot convert pad to `u32`"),
+                u32::try_from(value.pads[2]).expect("Cannot convert pad to `u32`"),
+                u32::try_from(value.pads[3]).expect("Cannot convert pad to `u32`"),
+            ),
+            groups: u32::try_from(value.groups).expect("Cannot convert groups to `u32`"),
+            dilation: Uint2::new(
+                u32::try_from(value.dilation[0]).expect("Cannot convert dilation to `u32`"),
+                u32::try_from(value.dilation[1]).expect("Cannot convert dilation to `u32`"),
+            ),
         }
     }
 }
@@ -100,8 +106,20 @@ impl From<I8Params> for Params {
 impl I8Params {
     /// Converts `scale` to fixed-point presentation. The resulting value can be used
     /// as the `scale` field.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the converted value is outside the `i32` bounds.
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+    // ^-- precision loss is OK in general, and we perform `i32` range check before
+    // using `_ as i32` on an `f32` value.
     pub fn convert_scale(bit_shift: u8, scale: f32) -> i32 {
-        (((1 << i32::from(bit_shift)) as f32) * scale).round() as i32
+        let scale = (2.0_f32.powi(i32::from(bit_shift)) * scale).round();
+        assert!(
+            scale >= i32::MIN as f32 && scale <= i32::MAX as f32,
+            "Scale is out of `i32` bounds"
+        );
+        scale as i32
     }
 }
 

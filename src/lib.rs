@@ -389,12 +389,48 @@ impl<T: ConvElement> PinnedConvolution<T> {
 
 #[cfg(test)]
 mod tests {
-    use failure::Error;
     use ndarray::Axis;
     use rand::{thread_rng, Rng};
-    use std::f32;
+    use std::{f32, fmt};
 
     use super::*;
+
+    /// Simple wrapper for both error types used in tests.
+    #[derive(Debug)]
+    enum Error {
+        Shape(ndarray::ShapeError),
+        Ocl(ocl::Error),
+    }
+
+    impl fmt::Display for Error {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Shape(e) => fmt::Display::fmt(e, formatter),
+                Self::Ocl(e) => fmt::Display::fmt(e, formatter),
+            }
+        }
+    }
+
+    impl std::error::Error for Error {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            match self {
+                Self::Shape(e) => Some(e),
+                Self::Ocl(_) => None,
+            }
+        }
+    }
+
+    impl From<ndarray::ShapeError> for Error {
+        fn from(error: ndarray::ShapeError) -> Self {
+            Self::Shape(error)
+        }
+    }
+
+    impl From<ocl::Error> for Error {
+        fn from(error: ocl::Error) -> Self {
+            Self::Ocl(error)
+        }
+    }
 
     #[test]
     fn basics() -> Result<(), Error> {

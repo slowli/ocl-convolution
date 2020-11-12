@@ -12,11 +12,10 @@ repository = "https://github.com/slowli/ocl-convolution"
 exclude = [
   "/misc/**",
   ".editorconfig",
-  ".travis.yml",
+  ".github",
 ]
 
 [badges]
-travis-ci = { repository = "slowli/ocl-convolution" }
 maintenance = { status = "experimental" }
 
 [dependencies]

@@ -23,17 +23,6 @@ jobs:
             ocl-icd-libopencl1 ocl-icd-dev ocl-icd-opencl-dev clinfo \
             clang-9 libclang-9-dev llvm-9 llvm-9-dev
 
-      - name: Cache cargo bins
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-bin
-      - name: Cache cargo build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target
-
       - name: Cache POCL binaries
         uses: actions/cache@v1
         with:
@@ -44,17 +33,31 @@ jobs:
         env:
           POCL_VER: 1.4
         run: |
-          mkdir -p ~/.local && cd ~/.local
-          curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
-          tar xf "pocl-$POCL_VER.tar.gz"
-          cd pocl-$POCL_VER
-          mkdir -p build && cd build
-          cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 \
-            -DCMAKE_INSTALL_PREFIX=/usr \
-            -DKERNELLIB_HOST_CPU_VARIANTS=distro ..
-          make
-          sudo make install
+          rm -rf ~/.local/pocl-$POCL_VER
+          if [[ ! -x ~/.local/pocl-$POCL_VER/build/bin/poclcc ]]; then
+            mkdir -p ~/.local && cd ~/.local
+            curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
+            tar xf "pocl-$POCL_VER.tar.gz"
+            cd pocl-$POCL_VER
+            mkdir -p build && cd build
+            cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 \
+              -DCMAKE_INSTALL_PREFIX=/usr \
+              -DKERNELLIB_HOST_CPU_VARIANTS=distro ..
+            make
+          fi
+          cd ~/.local/pocl-$POCL_VER/build && sudo make install
           clinfo
+
+      - name: Cache cargo bins
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin
+      - name: Cache cargo build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
@@ -115,17 +118,26 @@ jobs:
         env:
           POCL_VER: 1.4
         run: |
-          mkdir -p ~/.local && cd ~/.local
-          curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
-          tar xf "pocl-$POCL_VER.tar.gz"
-          cd pocl-$POCL_VER
-          mkdir -p build && cd build
-          cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 \
-            -DCMAKE_INSTALL_PREFIX=/usr \
-            -DKERNELLIB_HOST_CPU_VARIANTS=distro ..
-          make
-          sudo make install
+          rm -rf ~/.local/pocl-$POCL_VER
+          if [[ ! -x ~/.local/pocl-$POCL_VER/build/bin/poclcc ]]; then
+            mkdir -p ~/.local && cd ~/.local
+            curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
+            tar xf "pocl-$POCL_VER.tar.gz"
+            cd pocl-$POCL_VER
+            mkdir -p build && cd build
+            cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 \
+              -DCMAKE_INSTALL_PREFIX=/usr \
+              -DKERNELLIB_HOST_CPU_VARIANTS=distro ..
+            make
+          fi
+          cd ~/.local/pocl-$POCL_VER/build && sudo make install
           clinfo
+
+      - name: Cache cargo build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-msrv-cargo-build-target
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1

@@ -54,7 +54,7 @@
 //! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-1.0, 1.0));
 //! // Construct two 3x3 spatial filters.
 //! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-1.0, 1.0));
-//! // Perform the convolution. The output should have 4x4 spatial dims
+//! // Perform the convolution. The output must have 4x4 spatial dims
 //! // and contain 2 channels (1 per each filter). The output layout will
 //! // be the same as in the signal.
 //! let output = convolution.compute(
@@ -101,7 +101,7 @@
 //! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-127, 127));
 //! // Construct two 3x3 spatial filters.
 //! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-127, 127));
-//! // Perform the convolution. The output should have 4x4 spatial dims
+//! // Perform the convolution. The output must have 4x4 spatial dims
 //! // and contain 2 channels (1 per each filter).
 //! let output = convolution.compute(
 //!     FeatureMap::nhwc(&signal),
@@ -176,7 +176,7 @@ pub struct Convolution<T: ConvElement>(Base<T>);
 
 impl Convolution<f32> {
     /// Creates a new floating-point convolution builder. `size` determines the filter size
-    /// and should be odd (1, 3, 5, ...).
+    /// and must be odd (1, 3, 5, ...).
     ///
     /// # Panics
     ///
@@ -211,7 +211,7 @@ impl Convolution<f32> {
 /// by *profiling* the corresponding convolutional neural network (see e.g. [this paper]).
 ///
 /// Denote these quantiation params for tensor `T` as `T.scale` and `T.bias`. Denote `S`
-/// the signal, `F` the filter, `O` the output. Convolution parameters should be set as follows:
+/// the signal, `F` the filter, `O` the output. Convolution parameters must be set as follows:
 ///
 /// | `I8Params` field | Value     |
 /// |------------------|-----------|
@@ -240,11 +240,11 @@ impl Convolution<f32> {
 /// 7. Apply output bias: `O := O + params.output_bias`.
 /// 8. Saturate output to `i8` range.
 ///
-/// [`bit_shift`]: struct.I8Params.html#field.bit_shift
+/// [`bit_shift`]: I8Params::bit_shift
 /// [this paper]: https://arxiv.org/abs/1805.00907
 impl Convolution<i8> {
     /// Creates a new `i8` convolution builder. `size` determines the filter size
-    /// and should be odd (1, 3, 5, ...).
+    /// and must be odd (1, 3, 5, ...).
     ///
     /// # Panics
     ///
@@ -274,7 +274,7 @@ impl<T: ConvElement> Convolution<T> {
     ///
     /// # Parameters
     ///
-    /// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
+    /// - `filters` must have `MxK_HxK_WxC` layout, where `M` is the number of filters,
     ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channels.
     pub fn with_filters<'a>(
         self,
@@ -300,7 +300,7 @@ impl<T: ConvElement> Convolution<T> {
     ///
     /// # Parameters
     ///
-    /// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
+    /// - `filters` must have `MxK_HxK_WxC` layout, where `M` is the number of filters,
     ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channels.
     ///
     /// # Return value
@@ -325,8 +325,7 @@ impl<T: ConvElement> Convolution<T> {
     /// Performs convolution on the provided `signal` and `filters`, with the output offset
     /// by the provided per-filter biases.
     ///
-    /// Parameters, return value and panics are generally the same as for
-    /// [`compute()`](#method.compute).
+    /// Parameters, return value and panics are generally the same as for [`Self::compute()`].
     pub fn compute_with_biases<'a>(
         &self,
         signal: FeatureMap<T>,
@@ -337,7 +336,11 @@ impl<T: ConvElement> Convolution<T> {
     }
 }
 
-/// Convolution with pinned filters memory.
+/// Convolution with pinned filters memory. Pinning memory increases efficiency at the cost
+/// of making the convolution less flexible.
+///
+/// `FiltersConvolution` can be created by calling [`with_filters()`](Convolution::with_filters())
+/// or [`with_biased_filters()`](Convolution::with_biased_filters()) methods in `Convolution`.
 #[derive(Debug)]
 pub struct FiltersConvolution<T: ConvElement>(Base<Filters<T>>);
 
@@ -368,7 +371,11 @@ impl<T: ConvElement> FiltersConvolution<T> {
     }
 }
 
-/// Convolution with pinned memory for filters, signal and output.
+/// Convolution with pinned memory for filters, signal and output. Pinning memory increases
+/// efficiency at the cost of making the convolution less flexible.
+///
+/// `PinnedConvolution` can be created from a [`FiltersConvolution`] by calling
+/// [`pin()`](FiltersConvolution::pin()).
 #[derive(Debug)]
 pub struct PinnedConvolution<T: ConvElement>(Base<Pinned<T>>);
 
@@ -389,7 +396,7 @@ impl<T: ConvElement> PinnedConvolution<T> {
     }
 
     /// Computes the convolution on the provided signal. Signal dimensions must agree with
-    /// the ones provided to the `pinned()` constructor.
+    /// the ones provided to the [`pin()` method](FiltersConvolution::pin()).
     pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
         self.0.compute(signal)
     }

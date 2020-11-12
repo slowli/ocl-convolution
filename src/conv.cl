@@ -121,8 +121,8 @@ void add_channels(
 
 /// Computes convolution of two tensors.
 ///
-/// - `signal` should have `NxHxWxC` layout (i.e., the channel dimension is the inner-most one).
-/// - `filters` should have `MxK_HxK_WxC` layout, where `M` is the number of filters,
+/// - `signal` must have `NxHxWxC` layout (i.e., the channel dimension is the inner-most one).
+/// - `filters` must have `MxK_HxK_WxC` layout, where `M` is the number of filters,
 ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channels.
 ///
 /// The output will have layout `MxH'xW'` or `H'xW'xM`, depending on the `convolved_layout`

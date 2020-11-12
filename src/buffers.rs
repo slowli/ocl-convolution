@@ -7,7 +7,7 @@ use std::{borrow::Cow, convert::TryFrom};
 
 use crate::{base::Base, params::OutputParams, ConvElement, Params, WithParams};
 
-/// Shape of a `FeatureMap`.
+/// Shape of a [`FeatureMap`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FeatureMapShape {
     /// Number of samples constituting the map.
@@ -53,7 +53,7 @@ impl FeatureMapShape {
     }
 }
 
-/// Memory layout of `FeatureMap`.
+/// Memory layout of a [`FeatureMap`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Layout {
@@ -69,10 +69,8 @@ pub enum Layout {
 
 /// Feature map, i.e., a signal or output of the convolution operation.
 ///
-/// Internally, a `FeatureMap` is a thin wrapper around [`ArrayView`]
+/// Internally, a `FeatureMap` is a thin wrapper around [`ArrayView`](ndarray::ArrayView)
 /// that additionally indicates the memory layout of the map.
-///
-/// [`ArrayView`]: https://docs.rs/ndarray/0.12.1/ndarray/type.ArrayView.html
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FeatureMap<'a, T> {
     layout: Layout,

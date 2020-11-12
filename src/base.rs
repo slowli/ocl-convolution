@@ -111,7 +111,7 @@ impl<T: WithParams> Base<T> {
     pub fn queue(&self) -> &Queue {
         self.kernel
             .default_queue()
-            .expect("kernel should come with a pre-configured queue")
+            .expect("kernel must come with a pre-configured queue")
     }
 
     pub fn size(&self) -> usize {

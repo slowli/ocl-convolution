@@ -116,7 +116,7 @@ impl I8Params {
     pub fn convert_scale(bit_shift: u8, scale: f32) -> i32 {
         let scale = (2.0_f32.powi(i32::from(bit_shift)) * scale).round();
         assert!(
-            scale >= i32::MIN as f32 && scale <= i32::MAX as f32,
+            scale >= i32::min_value() as f32 && scale <= i32::max_value() as f32,
             "Scale is out of `i32` bounds"
         );
         scale as i32

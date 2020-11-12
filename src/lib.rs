@@ -481,6 +481,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cast_precision_loss)]
     fn f32_convolution_with_filters() -> Result<(), Error> {
         let filters = Array4::from_elem([1, 3, 3, 1], 1.0);
         let convolution = Convolution::f32(3)?
@@ -504,9 +505,9 @@ mod tests {
             )?,
         );
 
-        #[allow(clippy::cast_precision_loss)] // no loss since `i` values are small
         for i in 1..=5 {
             let signal = Array4::from_elem([1, 5 + i, 5 + i, 1], i as f32);
+            // ^-- no loss since `i` values are small
             assert!(convolution.compute(FeatureMap::nhwc(&signal)).is_ok());
         }
 
@@ -525,9 +526,9 @@ mod tests {
             )?,
         );
 
-        #[allow(clippy::cast_precision_loss)] // no loss since `i` values are small
         for i in 1..=5 {
             let signal = Array4::from_elem([1, 5, 5, 1], i as f32);
+            // ^-- no loss since `i` values are small
             assert!(pinned.compute(FeatureMap::nhwc(&signal)).is_ok());
         }
         Ok(())
@@ -746,6 +747,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cast_precision_loss)]
     fn with_several_input_channels() -> Result<(), Error> {
         let convolution = Convolution::f32(3)?.build(Params {
             strides: [1, 1],
@@ -756,9 +758,8 @@ mod tests {
 
         let mut signal = vec![0.0; 100];
 
-        #[allow(clippy::cast_precision_loss)] // no loss since `i` values are small
         for (i, val) in signal.iter_mut().enumerate() {
-            *val = (i / 4) as f32;
+            *val = (i / 4) as f32; // no loss since `i` values are small
         }
         let signal = Array4::from_shape_vec([1, 5, 5, 4], signal)?;
         let filter = Array4::from_shape_vec([1, 3, 3, 4], vec![1.; 36])?;

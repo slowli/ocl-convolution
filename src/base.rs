@@ -19,7 +19,7 @@ use crate::{
 pub struct ConvolutionBuilder<T> {
     program: ProQue,
     filter_size: usize,
-    _t: PhantomData<T>,
+    _element_type: PhantomData<T>,
 }
 
 impl<T: ConvElement> ConvolutionBuilder<T> {
@@ -71,7 +71,7 @@ impl<T: ConvElement> ConvolutionBuilder<T> {
         Ok(Self {
             program,
             filter_size,
-            _t: PhantomData,
+            _element_type: PhantomData,
         })
     }
 
@@ -214,7 +214,7 @@ impl<T: ConvElement + WithParams> Base<Pinned<T>> {
         assert_eq!(
             signal.shape(),
             self.buffers.signal_shape,
-            "Signal dimensions differ from the ones set by `with_pinned_memory()`"
+            "Signal dimensions differ from the ones set when pinning signal memory"
         );
         self.buffers.io.write_signal(signal)?;
         self.buffers.io.execute(&self.kernel, signal.layout())

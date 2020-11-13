@@ -447,16 +447,19 @@ mod tests {
         }
     }
 
+    #[allow(clippy::cast_precision_loss)] // There is no loss, since `i` values are small
+    fn create_signal(width: usize, height: usize) -> Array4<f32> {
+        Array4::from_shape_vec(
+            [1, width, height, 1],
+            (0..(width * height)).map(|i| i as f32).collect(),
+        )
+        .unwrap()
+    }
+
     #[test]
     fn basics() -> Result<(), Error> {
         let convolution = Convolution::f32(3)?.build(Params::default())?;
-        let signal = Array4::from_shape_vec(
-            [1, 5, 5, 1],
-            vec![
-                0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
-                18., 19., 20., 21., 22., 23., 24.,
-            ],
-        )?;
+        let signal = create_signal(5, 5);
         let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.0; 9])?;
 
         let c = convolution.compute(FeatureMap::nhwc(&signal), &filter)?;
@@ -495,13 +498,7 @@ mod tests {
             .build(Params::default())?
             .with_filters(filters.view())?;
 
-        let signal = Array4::from_shape_vec(
-            [1, 5, 5, 1],
-            vec![
-                0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
-                18., 19., 20., 21., 22., 23., 24.,
-            ],
-        )?;
+        let signal = create_signal(5, 5);
 
         let c = convolution.compute(FeatureMap::nhwc(&signal))?;
         assert_eq!(
@@ -548,13 +545,7 @@ mod tests {
             .build(Params::default())?
             .with_biased_filters(filters.view(), &[-100.0])?;
 
-        let signal = Array4::from_shape_vec(
-            [1, 5, 5, 1],
-            vec![
-                0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
-                18., 19., 20., 21., 22., 23., 24.,
-            ],
-        )?;
+        let signal = create_signal(5, 5);
 
         let c = convolution.compute(FeatureMap::nhwc(&signal))?;
         assert_eq!(
@@ -665,13 +656,7 @@ mod tests {
             groups: 1,
         })?;
 
-        let signal = Array4::from_shape_vec(
-            [1, 5, 5, 1],
-            vec![
-                0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
-                18., 19., 20., 21., 22., 23., 24.,
-            ],
-        )?;
+        let signal = create_signal(5, 5);
         let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.0; 9])?;
 
         let c = convolution.compute(FeatureMap::nhwc(&signal), &filter)?;
@@ -697,18 +682,7 @@ mod tests {
             groups: 1,
         })?;
 
-        let signal = Array4::from_shape_vec(
-            [1, 7, 5, 1],
-            vec![
-                0., 1., 2., 3., 4., //
-                5., 6., 7., 8., 9., //
-                10., 11., 12., 13., 14., //
-                15., 16., 17., 18., 19., //
-                20., 21., 22., 23., 24., //
-                25., 26., 27., 28., 29., //
-                30., 31., 32., 33., 34., //
-            ],
-        )?;
+        let signal = create_signal(7, 5);
         let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.; 9])?;
         let expected_output =
             Array4::from_shape_vec([1, 3, 2, 1], vec![54., 72., 144., 162., 234., 252.])?;
@@ -729,14 +703,7 @@ mod tests {
             groups: 1,
         })?;
 
-        let signal = Array4::from_shape_vec(
-            [1, 7, 5, 1],
-            vec![
-                0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.,
-                18., 19., 20., 21., 22., 23., 24., 25., 26., 27., 28., 29., 30., 31., 32., 33.,
-                34.,
-            ],
-        )?;
+        let signal = create_signal(7, 5);
         let filter = Array4::from_shape_vec([1, 3, 3, 1], vec![1.; 9])?;
 
         let expected_output = Array4::from_shape_vec(

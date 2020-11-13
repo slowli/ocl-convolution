@@ -27,7 +27,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.local
-          key: ${{ runner.os }}-pocl
+          key: ${{ runner.os }}-pocl1.4
 
       - name: Install POCL
         env:
@@ -41,7 +41,7 @@ jobs:
             mkdir -p build && cd build
             cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 \
               -DCMAKE_INSTALL_PREFIX=/usr \
-              -DKERNELLIB_HOST_CPU_VARIANTS=distro ..
+              -DLLC_HOST_CPU=x86-64 ..
             make
           fi
           cd ~/.local/pocl-$POCL_VER/build && sudo make install
@@ -116,7 +116,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.local
-          key: ${{ runner.os }}-pocl
+          key: ${{ runner.os }}-pocl1.4
 
       - name: Install POCL
         env:
@@ -130,7 +130,7 @@ jobs:
             mkdir -p build && cd build
             cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 \
               -DCMAKE_INSTALL_PREFIX=/usr \
-              -DKERNELLIB_HOST_CPU_VARIANTS=distro ..
+              -DLLC_HOST_CPU=x86-64 ..
             make
           fi
           cd ~/.local/pocl-$POCL_VER/build && sudo make install

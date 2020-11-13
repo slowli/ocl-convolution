@@ -33,7 +33,6 @@ jobs:
         env:
           POCL_VER: 1.4
         run: |
-          rm -rf ~/.local/pocl-$POCL_VER
           if [[ ! -x ~/.local/pocl-$POCL_VER/build/bin/poclcc ]]; then
             mkdir -p ~/.local && cd ~/.local
             curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
@@ -86,6 +85,11 @@ jobs:
         with:
           command: test
           args: --all-targets
+      - name: Run doc tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace --doc
 
       - name: Check docs
         run: cargo clean --doc && cargo doc -p ocl-convolution --no-deps && cargo deadlinks --dir target/doc
@@ -118,7 +122,6 @@ jobs:
         env:
           POCL_VER: 1.4
         run: |
-          rm -rf ~/.local/pocl-$POCL_VER
           if [[ ! -x ~/.local/pocl-$POCL_VER/build/bin/poclcc ]]; then
             mkdir -p ~/.local && cd ~/.local
             curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
@@ -151,6 +154,11 @@ jobs:
         with:
           command: test
           args: --all-targets
+      - name: Run doc tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace --doc
 
   # Building docs does not require an OpenCL libraries or implementation.
   document:

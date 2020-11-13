@@ -1,0 +1,206 @@
+name: Rust
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install packages
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          sudo add-apt-repository 'deb [arch=amd64] http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main'
+          sudo apt-get update
+          sudo apt-get install -y --no-install-suggests --no-install-recommends \
+            build-essential cmake pkg-config libhwloc-dev zlib1g-dev \
+            ocl-icd-libopencl1 ocl-icd-dev ocl-icd-opencl-dev clinfo \
+            clang-9 libclang-9-dev llvm-9 llvm-9-dev
+
+      - name: Cache POCL binaries
+        uses: actions/cache@v1
+        with:
+          path: ~/.local
+          key: ${{ runner.os }}-pocl1.4
+
+      - name: Install POCL
+        env:
+          POCL_VER: 1.4
+        run: |
+          if [[ ! -x ~/.local/pocl-$POCL_VER/build/bin/poclcc ]]; then
+            mkdir -p ~/.local && cd ~/.local
+            curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
+            tar xf "pocl-$POCL_VER.tar.gz"
+            cd pocl-$POCL_VER
+            mkdir -p build && cd build
+            cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 \
+              -DCMAKE_INSTALL_PREFIX=/usr \
+              -DLLC_HOST_CPU=x86-64 ..
+            make
+          fi
+          cd ~/.local/pocl-$POCL_VER/build && sudo make install
+          clinfo
+
+      - name: Cache cargo bins
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin
+      - name: Cache cargo build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt,clippy
+      - name: Install deadlinks
+        run: cargo deadlinks -V | grep $DEADLINKS_VERS || cargo install cargo-deadlinks --vers $DEADLINKS_VERS --force
+        env:
+          DEADLINKS_VERS: 0.4.1
+
+      - name: Format
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+      - name: Clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-targets -- -D warnings
+
+      - name: Run tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-targets
+      - name: Run doc tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace --doc
+
+      - name: Check docs
+        run: cargo clean --doc && cargo doc -p ocl-convolution --no-deps && cargo deadlinks --dir target/doc
+
+  # Checks minimum supported Rust version.
+  build-msrv:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install packages
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          sudo add-apt-repository 'deb [arch=amd64] http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main'
+          sudo apt-get update
+          sudo apt-get install -y --no-install-suggests --no-install-recommends \
+            build-essential cmake pkg-config libhwloc-dev zlib1g-dev \
+            ocl-icd-libopencl1 ocl-icd-dev ocl-icd-opencl-dev clinfo \
+            clang-9 libclang-9-dev llvm-9 llvm-9-dev
+
+      # We intentionally reuse the same cache as for the `build` job.
+      - name: Cache POCL binaries
+        uses: actions/cache@v1
+        with:
+          path: ~/.local
+          key: ${{ runner.os }}-pocl1.4
+
+      - name: Install POCL
+        env:
+          POCL_VER: 1.4
+        run: |
+          if [[ ! -x ~/.local/pocl-$POCL_VER/build/bin/poclcc ]]; then
+            mkdir -p ~/.local && cd ~/.local
+            curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
+            tar xf "pocl-$POCL_VER.tar.gz"
+            cd pocl-$POCL_VER
+            mkdir -p build && cd build
+            cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 \
+              -DCMAKE_INSTALL_PREFIX=/usr \
+              -DLLC_HOST_CPU=x86-64 ..
+            make
+          fi
+          cd ~/.local/pocl-$POCL_VER/build && sudo make install
+          clinfo
+
+      - name: Cache cargo build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-msrv-cargo-build-target
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.39.0
+          override: true
+          profile: minimal
+
+      - name: Run tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-targets
+      - name: Run doc tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace --doc
+
+  # Building docs does not require an OpenCL libraries or implementation.
+  document:
+    needs:
+      - build
+      - build-msrv
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Cache cargo build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-docs-cargo-build-target
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2020-10-24
+          profile: minimal
+          override: true
+
+      - name: Build docs
+        run: |
+          cargo clean --doc && \
+          cargo rustdoc -p ocl-convolution -- \
+            -Z unstable-options \
+            --extern-html-root-url ocl=https://docs.rs/ocl/~0.19 \
+            --extern-html-root-url ndarray=https://docs.rs/ndarray/~0.13
+
+      - name: Copy index page
+        run: cp misc/docroot.html target/doc/index.html
+
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@releases/v3
+        with:
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          BRANCH: gh-pages
+          FOLDER: target/doc
+          SINGLE_COMMIT: true

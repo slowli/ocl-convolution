@@ -3,11 +3,11 @@
 use ndarray::{Array4, ArrayView4};
 use ocl::{flags, prm::Uint3, Buffer, Kernel};
 
-use std::borrow::Cow;
+use std::{borrow::Cow, convert::TryFrom};
 
 use crate::{base::Base, params::OutputParams, ConvElement, Params, WithParams};
 
-/// Shape of a `FeatureMap`.
+/// Shape of a [`FeatureMap`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FeatureMapShape {
     /// Number of samples constituting the map.
@@ -53,7 +53,7 @@ impl FeatureMapShape {
     }
 }
 
-/// Memory layout of `FeatureMap`.
+/// Memory layout of a [`FeatureMap`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Layout {
@@ -69,10 +69,8 @@ pub enum Layout {
 
 /// Feature map, i.e., a signal or output of the convolution operation.
 ///
-/// Internally, a `FeatureMap` is a thin wrapper around [`ArrayView`]
+/// Internally, a `FeatureMap` is a thin wrapper around [`ArrayView`](ndarray::ArrayView)
 /// that additionally indicates the memory layout of the map.
-///
-/// [`ArrayView`]: https://docs.rs/ndarray/0.12.1/ndarray/type.ArrayView.html
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FeatureMap<'a, T> {
     layout: Layout,
@@ -155,10 +153,10 @@ impl<T: ConvElement> Filters<T> {
             );
         }
 
-        let filters_slice = filters
-            .as_slice()
-            .map(Cow::Borrowed)
-            .unwrap_or_else(|| Cow::Owned(filters.iter().cloned().collect()));
+        let filters_slice = filters.as_slice().map_or_else(
+            || Cow::Owned(filters.iter().cloned().collect()),
+            Cow::Borrowed,
+        );
         let filters_buffer = Buffer::builder()
             .queue(conv.queue().clone())
             .len(filters.shape().iter().product::<usize>())
@@ -243,14 +241,15 @@ impl<T: ConvElement> InputAndOutput<T> {
             .build()?;
 
         let signal_dims = Uint3::new(
-            signal_shape.height as u32,
-            signal_shape.width as u32,
-            signal_shape.channels as u32,
+            u32::try_from(signal_shape.height).expect("Cannot convert signal dimension to `u32`"),
+            u32::try_from(signal_shape.width).expect("Cannot convert signal dimension to `u32`"),
+            u32::try_from(signal_shape.channels).expect("Cannot convert signal dimension to `u32`"),
         );
         Ok(InputAndOutput {
             signal_buffer,
             signal_dims,
-            batch_size: signal_shape.batch_size as u32,
+            batch_size: u32::try_from(signal_shape.batch_size)
+                .expect("Cannot convert signal dimension to `u32`"),
             output_buffer,
             output_shape,
         })
@@ -258,10 +257,10 @@ impl<T: ConvElement> InputAndOutput<T> {
 
     pub fn write_signal(&self, signal: FeatureMap<T>) -> ocl::Result<()> {
         let signal = signal.to_nhwc();
-        let signal_slice = signal
-            .as_slice()
-            .map(Cow::Borrowed)
-            .unwrap_or_else(|| Cow::Owned(signal.iter().cloned().collect()));
+        let signal_slice = signal.as_slice().map_or_else(
+            || Cow::Owned(signal.iter().cloned().collect()),
+            Cow::Borrowed,
+        );
         self.signal_buffer.write(signal_slice.as_ref()).enq()
     }
 
@@ -274,7 +273,8 @@ impl<T: ConvElement> InputAndOutput<T> {
         kernel.set_arg(
             "out_params",
             OutputParams {
-                batch_size: s.batch_size as u32,
+                batch_size: u32::try_from(s.batch_size)
+                    .expect("Cannot convert output dimension to `u32`"),
                 layout: out_layout,
             },
         )?;

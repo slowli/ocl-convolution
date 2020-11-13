@@ -1,10 +1,10 @@
 # OpenCL-accelerated 2D convolutions for Rust
 
-[![Travis Build Status](https://img.shields.io/travis/com/slowli/ocl-convolution/master.svg?label=Linux%20Build)](https://travis-ci.com/slowli/ocl-convolution) 
+[![Build Status](https://github.com/slowli/ocl-convolution/workflows/Rust/badge.svg?branch=master)](https://github.com/slowli/ocl-convolution/actions) 
 [![License: Apache-2.0](https://img.shields.io/github/license/slowli/ocl-convolution.svg)](https://github.com/slowli/ocl-convolution/blob/master/LICENSE)
 ![rust 1.39.0+ required](https://img.shields.io/badge/rust-1.39.0+-blue.svg?label=Required%20Rust) 
 
-**Documentation:**
+**Documentation:** [![Docs.rs](https://docs.rs/ocl-convolution/badge.svg)](https://docs.rs/ocl-convolution/)
 [![crate docs (master)](https://img.shields.io/badge/master-yellow.svg?label=docs)](https://slowli.github.io/ocl-convolution/ocl_convolution/) 
 
 This library provides 2D [convolutions] accelerated with [OpenCL]. Convolutions
@@ -17,6 +17,13 @@ DL frameworks (TensorFlow, PyTorch, etc.) will most probably be a more robust an
 tool for more high-level tasks.
 
 ## Usage
+
+Add this to your `Crate.toml`:
+
+```toml
+[dependencies]
+ocl-convolution = "0.2.0"
+``` 
 
 See crate docs for the examples of usage.
 

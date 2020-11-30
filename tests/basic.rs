@@ -551,7 +551,7 @@ fn i8_convolution_with_filter_bias() -> Result<(), Error> {
 #[test]
 #[allow(clippy::deref_addrof)] // the problem is in the `ndarray::s!` macro
 fn f32_batching() -> Result<(), Error> {
-    use ndarray::{s, stack};
+    use ndarray::{concatenate, s};
 
     let mut rng = thread_rng();
     let conv = Convolution::f32(3)?.build(Params::default())?;
@@ -581,7 +581,7 @@ fn f32_batching() -> Result<(), Error> {
             })
             .collect::<Result<_, _>>()?;
         let sample_outputs: Vec<_> = sample_outputs.iter().map(Array4::view).collect();
-        let stitched_output = stack(Axis(0), &sample_outputs)?;
+        let stitched_output = concatenate(Axis(0), &sample_outputs)?;
 
         let max_diff = (batched_output.clone() - stitched_output.clone())
             .mapv(f32::abs)

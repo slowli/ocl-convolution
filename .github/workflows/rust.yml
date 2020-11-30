@@ -192,7 +192,7 @@ jobs:
           cargo rustdoc -p ocl-convolution -- \
             -Z unstable-options \
             --extern-html-root-url ocl=https://docs.rs/ocl/~0.19 \
-            --extern-html-root-url ndarray=https://docs.rs/ndarray/~0.13
+            --extern-html-root-url ndarray=https://docs.rs/ndarray/~0.14
 
       - name: Copy index page
         run: cp misc/docroot.html target/doc/index.html

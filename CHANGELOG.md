@@ -10,6 +10,10 @@ The project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html)
 - Check integer and floating-point conversions, thus removing possibility
   of unexpected errors and undefined behavior.
 
+### Changed
+
+- Update dependencies.
+
 ## 0.2.0 - 2020-03-16
 
 ### Added

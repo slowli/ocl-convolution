@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/slowli/ocl-convolution/workflows/Rust/badge.svg?branch=master)](https://github.com/slowli/ocl-convolution/actions) 
 [![License: Apache-2.0](https://img.shields.io/github/license/slowli/ocl-convolution.svg)](https://github.com/slowli/ocl-convolution/blob/master/LICENSE)
-![rust 1.39.0+ required](https://img.shields.io/badge/rust-1.39.0+-blue.svg?label=Required%20Rust) 
+![rust 1.42.0+ required](https://img.shields.io/badge/rust-1.42.0+-blue.svg?label=Required%20Rust) 
 
 **Documentation:** [![Docs.rs](https://docs.rs/ocl-convolution/badge.svg)](https://docs.rs/ocl-convolution/)
 [![crate docs (master)](https://img.shields.io/badge/master-yellow.svg?label=docs)](https://slowli.github.io/ocl-convolution/ocl_convolution/) 

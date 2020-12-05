@@ -48,7 +48,7 @@ apt-get update
 apt-get install clang-9 libclang-9-dev llvm-9 llvm-9-dev
 
 # Get POCL sources
-export POCL_VER=1.4 # latest stable version
+export POCL_VER=1.5 # latest stable version
 curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
 tar xf "pocl-$POCL_VER.tar.gz"
 # Build POCL from the sources

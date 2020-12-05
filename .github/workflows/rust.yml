@@ -27,11 +27,11 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.local
-          key: ${{ runner.os }}-pocl1.4
+          key: ${{ runner.os }}-pocl1.5
 
       - name: Install POCL
         env:
-          POCL_VER: 1.4
+          POCL_VER: 1.5
         run: |
           if [[ ! -x ~/.local/pocl-$POCL_VER/build/bin/poclcc ]]; then
             mkdir -p ~/.local && cd ~/.local
@@ -116,11 +116,11 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.local
-          key: ${{ runner.os }}-pocl1.4
+          key: ${{ runner.os }}-pocl1.5
 
       - name: Install POCL
         env:
-          POCL_VER: 1.4
+          POCL_VER: 1.5
         run: |
           if [[ ! -x ~/.local/pocl-$POCL_VER/build/bin/poclcc ]]; then
             mkdir -p ~/.local && cd ~/.local

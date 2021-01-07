@@ -555,7 +555,7 @@ fn f32_batching() -> Result<(), Error> {
 
     let mut rng = thread_rng();
     let conv = Convolution::f32(3)?.build(Params::default())?;
-    let filters = Array4::from_shape_fn([2, 3, 3, 4], |_| rng.gen_range(-1.0, 1.0));
+    let filters = Array4::from_shape_fn([2, 3, 3, 4], |_| rng.gen_range(-1.0..=1.0));
     let conv = conv.with_filters(&filters)?;
 
     for batch_size in 2..8 {
@@ -571,7 +571,7 @@ fn f32_batching() -> Result<(), Error> {
             FeatureMap::nchw
         };
 
-        let signal = Array4::from_shape_fn(signal_shape, |_| rng.gen_range(-1.0, 1.0));
+        let signal = Array4::from_shape_fn(signal_shape, |_| rng.gen_range(-1.0..=1.0));
         let batched_output = conv.compute(to_map(signal.view()))?;
 
         let sample_outputs: Vec<_> = (0..batch_size)

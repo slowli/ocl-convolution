@@ -71,8 +71,8 @@ fn slow_compute<T: LinalgScalar + ops::AddAssign>(
 
 fn compare_f32_convolution(signal_dims: [usize; 3], filter_dims: [usize; 4], params: Params) {
     let mut rng = thread_rng();
-    let signal = Array3::from_shape_fn(signal_dims, |_| rng.gen_range(-1.0, 1.0));
-    let filter = Array4::from_shape_fn(filter_dims, |_| rng.gen_range(-1.0, 1.0));
+    let signal = Array3::from_shape_fn(signal_dims, |_| rng.gen_range(-1.0..=1.0));
+    let filter = Array4::from_shape_fn(filter_dims, |_| rng.gen_range(-1.0..=1.0));
     let cpu_output = slow_compute(signal.view(), filter.view(), None, params);
 
     let convolution = Convolution::f32(filter_dims[1])
@@ -263,8 +263,8 @@ fn downscale(x: i32, shift: i32) -> i8 {
 
 fn compare_i8_convolution(signal_dims: [usize; 3], filter_dims: [usize; 4], params: Params) {
     let mut rng = thread_rng();
-    let signal = Array3::from_shape_fn(signal_dims, |_| rng.gen_range(-127_i8, 127));
-    let filter = Array4::from_shape_fn(filter_dims, |_| rng.gen_range(-127_i8, 127));
+    let signal = Array3::from_shape_fn(signal_dims, |_| rng.gen_range(-127_i8..=127));
+    let filter = Array4::from_shape_fn(filter_dims, |_| rng.gen_range(-127_i8..=127));
     let cpu_output = slow_compute(
         signal.mapv(i32::from).view(),
         filter.mapv(i32::from).view(),

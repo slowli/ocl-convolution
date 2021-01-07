@@ -38,13 +38,13 @@ fn run_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
     let mut signal = Array4::zeros([1, INPUT_SIZE, INPUT_SIZE, channels]);
     signal
         .iter_mut()
-        .for_each(|v| *v = rng.gen_range(-1.0, 1.0));
+        .for_each(|v| *v = rng.gen_range(-1.0..=1.0));
     let signal = FeatureMap::nhwc(&signal);
 
     let mut filters = Array4::zeros([channels, 3, 3, channels]);
     filters
         .iter_mut()
-        .for_each(|v| *v = rng.gen_range(-1.0, 1.0));
+        .for_each(|v| *v = rng.gen_range(-1.0..=1.0));
 
     match memory {
         Memory::Simple => {
@@ -82,12 +82,12 @@ fn run_batched_convolution(bencher: &mut Bencher, channels: usize, sequential: b
     let mut signal = Array4::zeros([BATCH_SIZE, INPUT_SIZE, INPUT_SIZE, channels]);
     signal
         .iter_mut()
-        .for_each(|v| *v = rng.gen_range(-1.0, 1.0));
+        .for_each(|v| *v = rng.gen_range(-1.0..=1.0));
 
     let mut filters = Array4::zeros([channels, 3, 3, channels]);
     filters
         .iter_mut()
-        .for_each(|v| *v = rng.gen_range(-1.0, 1.0));
+        .for_each(|v| *v = rng.gen_range(-1.0..=1.0));
 
     let convolution = convolution.with_filters(filters.view()).unwrap();
     if sequential {
@@ -124,12 +124,12 @@ fn run_i8_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
     let mut signal = Array4::zeros([1, INPUT_SIZE, INPUT_SIZE, channels]);
     signal
         .iter_mut()
-        .for_each(|v| *v = rng.gen_range(-127, 127));
+        .for_each(|v| *v = rng.gen_range(-127..=127));
     let signal = FeatureMap::nhwc(&signal);
     let mut filters = Array4::zeros([channels, 3, 3, channels]);
     filters
         .iter_mut()
-        .for_each(|v| *v = rng.gen_range(-127, 127));
+        .for_each(|v| *v = rng.gen_range(-127..=127));
 
     match memory {
         Memory::Simple => bencher.iter(|| convolution.compute(signal, &filters).unwrap()),

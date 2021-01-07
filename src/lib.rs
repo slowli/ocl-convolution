@@ -51,9 +51,9 @@
 //!
 //! // Generate random signal with 6x6 spatial dims and 3 channels.
 //! let mut rng = thread_rng();
-//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-1.0, 1.0));
+//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-1.0..=1.0));
 //! // Construct two 3x3 spatial filters.
-//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-1.0, 1.0));
+//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-1.0..=1.0));
 //! // Perform the convolution. The output must have 4x4 spatial dims
 //! // and contain 2 channels (1 per each filter). The output layout will
 //! // be the same as in the signal.
@@ -98,9 +98,9 @@
 //!
 //! // Generate random signal with 6x6 spatial dims and 3 channels.
 //! let mut rng = thread_rng();
-//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-127, 127));
+//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-127..=127));
 //! // Construct two 3x3 spatial filters.
-//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-127, 127));
+//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-127..=127));
 //! // Perform the convolution. The output must have 4x4 spatial dims
 //! // and contain 2 channels (1 per each filter).
 //! let output = convolution.compute(

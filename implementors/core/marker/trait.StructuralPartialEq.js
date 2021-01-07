@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["ocl_convolution"] = [{"text":"impl StructuralPartialEq for FeatureMapShape","synthetic":false,"types":[]},{"text":"impl StructuralPartialEq for Layout","synthetic":false,"types":[]},{"text":"impl&lt;'a, T&gt; StructuralPartialEq for FeatureMap&lt;'a, T&gt;","synthetic":false,"types":[]},{"text":"impl StructuralPartialEq for Params","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

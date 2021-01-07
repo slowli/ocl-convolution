@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["ocl_convolution"] = [{"text":"impl PartialEq&lt;FeatureMapShape&gt; for FeatureMapShape","synthetic":false,"types":[]},{"text":"impl PartialEq&lt;Layout&gt; for Layout","synthetic":false,"types":[]},{"text":"impl&lt;'a, T:&nbsp;PartialEq&gt; PartialEq&lt;FeatureMap&lt;'a, T&gt;&gt; for FeatureMap&lt;'a, T&gt;","synthetic":false,"types":[]},{"text":"impl PartialEq&lt;Params&gt; for Params","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

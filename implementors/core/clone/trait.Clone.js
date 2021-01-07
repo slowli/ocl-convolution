@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["ocl_convolution"] = [{"text":"impl Clone for FeatureMapShape","synthetic":false,"types":[]},{"text":"impl Clone for Layout","synthetic":false,"types":[]},{"text":"impl&lt;'a, T:&nbsp;Clone&gt; Clone for FeatureMap&lt;'a, T&gt;","synthetic":false,"types":[]},{"text":"impl Clone for Params","synthetic":false,"types":[]},{"text":"impl Clone for I8Params","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

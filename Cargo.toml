@@ -21,7 +21,7 @@ maintenance = { status = "experimental" }
 [dependencies]
 # Public dependencies (present in the public API).
 ndarray = "0.14.0"
-ocl = "0.19.0"
+ocl = "0.19.3"
 
 # Private dependencies (not exposed in the public API).
 lazy_static = "1.3.0"

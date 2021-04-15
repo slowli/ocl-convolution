@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ master ]
 
+env:
+  # Minimum supported Rust version.
+  msrv: 1.49.0
+  # Nightly Rust toolchain for building docs.
+  nightly: nightly-2021-04-14
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -145,7 +151,7 @@ jobs:
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.42.0
+          toolchain: ${{ env.msrv }}
           override: true
           profile: minimal
 
@@ -182,7 +188,7 @@ jobs:
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2020-10-24
+          toolchain: ${{ env.nightly }}
           profile: minimal
           override: true
 
@@ -192,7 +198,7 @@ jobs:
           cargo rustdoc -p ocl-convolution -- \
             -Z unstable-options \
             --extern-html-root-url ocl=https://docs.rs/ocl/~0.19 \
-            --extern-html-root-url ndarray=https://docs.rs/ndarray/~0.14
+            --extern-html-root-url ndarray=https://docs.rs/ndarray/~0.15.1
 
       - name: Copy index page
         run: cp misc/docroot.html target/doc/index.html

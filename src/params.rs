@@ -5,7 +5,7 @@ use ocl::{
     OclPrm,
 };
 
-use std::fmt;
+use std::{fmt, marker::PhantomData};
 
 use crate::{
     buffers::{Filters, Layout, Pinned},
@@ -164,30 +164,22 @@ impl Default for OutputParams {
     }
 }
 
-/// Type that can be associated with convolution parameters.
-pub trait WithParams {
-    /// Parameters of the convolution.
+pub(crate) trait WithParams {
     type Params: Copy + fmt::Debug + Into<Params> + Into<Self::ClParams>;
-    /// OpenCL-friendly version of parameters.
     type ClParams: OclPrm;
 }
 
-impl WithParams for f32 {
-    type Params = Params;
-    type ClParams = ClParams;
-}
-
-impl WithParams for i8 {
-    type Params = I8Params;
-    type ClParams = ClI8Params;
+impl<T: ConvElement> WithParams for PhantomData<T> {
+    type Params = T::Params;
+    type ClParams = T::ClParams;
 }
 
 impl<T: ConvElement> WithParams for Filters<T> {
-    type Params = <T as WithParams>::Params;
-    type ClParams = <T as WithParams>::ClParams;
+    type Params = T::Params;
+    type ClParams = T::ClParams;
 }
 
 impl<T: ConvElement> WithParams for Pinned<T> {
-    type Params = <T as WithParams>::Params;
-    type ClParams = <T as WithParams>::ClParams;
+    type Params = T::Params;
+    type ClParams = T::ClParams;
 }

@@ -5,7 +5,11 @@ use ocl::{flags, prm::Uint3, Buffer, Kernel};
 
 use std::{borrow::Cow, convert::TryFrom};
 
-use crate::{base::Base, params::OutputParams, ConvElement, Params, WithParams};
+use crate::{
+    base::Base,
+    params::{OutputParams, WithParams},
+    ConvElement, Params,
+};
 
 /// Shape of a [`FeatureMap`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

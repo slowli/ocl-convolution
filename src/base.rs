@@ -132,7 +132,7 @@ impl<T: WithParams> Base<T> {
     }
 }
 
-impl<T: ConvElement> Base<T> {
+impl<T: ConvElement> Base<PhantomData<T>> {
     pub fn new(builder: &ConvolutionBuilder<T>, params: T::Params) -> ocl::Result<Self> {
         let kernel = builder
             .kernel_builder()
@@ -148,7 +148,7 @@ impl<T: ConvElement> Base<T> {
             size: builder.filter_size,
             params,
             kernel,
-            buffers: T::default(),
+            buffers: PhantomData,
             context: builder.program.context().clone(),
         })
     }
@@ -193,7 +193,7 @@ impl<T: ConvElement> Base<T> {
     }
 }
 
-impl<T: ConvElement + WithParams> Base<Filters<T>> {
+impl<T: ConvElement> Base<Filters<T>> {
     pub fn pinned(self, signal_shape: FeatureMapShape) -> ocl::Result<Base<Pinned<T>>> {
         let io = create_io(signal_shape, &self.buffers, &self)?;
         Ok(Base {
@@ -216,7 +216,7 @@ impl<T: ConvElement + WithParams> Base<Filters<T>> {
     }
 }
 
-impl<T: ConvElement + WithParams> Base<Pinned<T>> {
+impl<T: ConvElement> Base<Pinned<T>> {
     pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
         assert_eq!(
             signal.shape(),

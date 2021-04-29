@@ -124,6 +124,8 @@
 use ndarray::{Array4, ArrayView4};
 use ocl::OclPrm;
 
+use std::{fmt, marker::PhantomData};
+
 mod base;
 mod buffers;
 mod params;
@@ -135,23 +137,31 @@ use crate::{
 pub use crate::{
     base::ConvolutionBuilder,
     buffers::{FeatureMap, FeatureMapShape, Layout},
-    params::{I8Params, Params, WithParams},
+    params::{I8Params, Params},
 };
 
 const SOURCE: &str = include_str!(concat!(env!("OUT_DIR"), "/conv.cl"));
 
 /// Supported element types for convolutions.
-pub trait ConvElement: OclPrm + Copy + Default + WithParams + 'static {
+pub trait ConvElement: OclPrm + Copy + Default + 'static {
     /// Type of the multiply-add accumulator.
     type Acc: OclPrm + Copy + Default + 'static;
+    /// Parameters of the convolution.
+    type Params: Copy + fmt::Debug + Into<Params> + Into<Self::ClParams>;
+    /// OpenCL-friendly version of parameters. This is considered an implementation detail.
+    type ClParams: OclPrm;
 }
 
 impl ConvElement for f32 {
     type Acc = f32;
+    type Params = Params;
+    type ClParams = crate::params::ClParams;
 }
 
 impl ConvElement for i8 {
     type Acc = i32;
+    type Params = I8Params;
+    type ClParams = crate::params::ClI8Params;
 }
 
 impl ConvolutionBuilder<f32> {
@@ -170,7 +180,7 @@ impl ConvolutionBuilder<i8> {
 
 /// Convolution without pinned memory.
 #[derive(Debug)]
-pub struct Convolution<T: ConvElement>(Base<T>);
+pub struct Convolution<T: ConvElement>(Base<PhantomData<T>>);
 
 impl Convolution<f32> {
     /// Creates a new floating-point convolution builder. `size` determines the filter size

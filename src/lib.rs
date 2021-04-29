@@ -143,11 +143,11 @@ pub use crate::{
 const SOURCE: &str = include_str!(concat!(env!("OUT_DIR"), "/conv.cl"));
 
 /// Supported element types for convolutions.
-pub trait ConvElement: OclPrm + Copy + Default + 'static {
+pub trait ConvElement: OclPrm + Copy + 'static {
     /// Type of the multiply-add accumulator.
-    type Acc: OclPrm + Copy + Default + 'static;
+    type Acc: OclPrm + Copy + 'static;
     /// Parameters of the convolution.
-    type Params: Copy + fmt::Debug + Into<Params> + Into<Self::ClParams>;
+    type Params: Copy + Into<Params> + Into<Self::ClParams>;
     /// OpenCL-friendly version of parameters. This is considered an implementation detail.
     type ClParams: OclPrm;
 }
@@ -179,8 +179,17 @@ impl ConvolutionBuilder<i8> {
 }
 
 /// Convolution without pinned memory.
-#[derive(Debug)]
 pub struct Convolution<T: ConvElement>(Base<PhantomData<T>>);
+
+impl<T> fmt::Debug for Convolution<T>
+where
+    T: ConvElement,
+    T::Params: fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_tuple("Convolution").field(&self.0).finish()
+    }
+}
 
 impl Convolution<f32> {
     /// Creates a new floating-point convolution builder. `size` determines the filter size
@@ -348,8 +357,20 @@ impl<T: ConvElement> Convolution<T> {
 ///
 /// `FiltersConvolution` can be created by calling [`with_filters()`](Convolution::with_filters())
 /// or [`with_biased_filters()`](Convolution::with_biased_filters()) methods in `Convolution`.
-#[derive(Debug)]
 pub struct FiltersConvolution<T: ConvElement>(Base<Filters<T>>);
+
+impl<T> fmt::Debug for FiltersConvolution<T>
+where
+    T: ConvElement,
+    T::Params: fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("FiltersConvolution")
+            .field(&self.0)
+            .finish()
+    }
+}
 
 impl<T: ConvElement> FiltersConvolution<T> {
     /// Spatial size of the convolution.
@@ -383,8 +404,20 @@ impl<T: ConvElement> FiltersConvolution<T> {
 ///
 /// `PinnedConvolution` can be created from a [`FiltersConvolution`] by calling
 /// [`pin()`](FiltersConvolution::pin()).
-#[derive(Debug)]
 pub struct PinnedConvolution<T: ConvElement>(Base<Pinned<T>>);
+
+impl<T> fmt::Debug for PinnedConvolution<T>
+where
+    T: ConvElement,
+    T::Params: fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("PinnedConvolution")
+            .field(&self.0)
+            .finish()
+    }
+}
 
 impl<T: ConvElement> PinnedConvolution<T> {
     /// Spatial size of the convolution.

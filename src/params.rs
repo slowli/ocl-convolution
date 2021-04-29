@@ -5,7 +5,7 @@ use ocl::{
     OclPrm,
 };
 
-use std::{fmt, marker::PhantomData};
+use std::marker::PhantomData;
 
 use crate::{
     buffers::{Filters, Layout, Pinned},
@@ -165,7 +165,7 @@ impl Default for OutputParams {
 }
 
 pub(crate) trait WithParams {
-    type Params: Copy + fmt::Debug + Into<Params> + Into<Self::ClParams>;
+    type Params: Copy + Into<Params> + Into<Self::ClParams>;
     type ClParams: OclPrm;
 }
 

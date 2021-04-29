@@ -30,7 +30,6 @@
 //! [cnn]: https://en.wikipedia.org/wiki/Convolutional_neural_network
 //! [OpenCL]: https://www.khronos.org/opencl/
 //! [this paper]: https://dl.acm.org/citation.cfm?id=3001177
-//! [`Convolution`]: struct.Convolution.html
 //!
 //! # Examples
 //!
@@ -113,7 +112,6 @@
 //! ```
 
 #![doc(html_root_url = "https://docs.rs/ocl-convolution/0.2.0")]
-#![deny(missing_docs, missing_debug_implementations)]
 #![warn(missing_debug_implementations, missing_docs, bare_trait_objects)]
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(
@@ -126,6 +124,8 @@
 use ndarray::{Array4, ArrayView4};
 use ocl::OclPrm;
 
+use std::{fmt, marker::PhantomData};
+
 mod base;
 mod buffers;
 mod params;
@@ -137,23 +137,31 @@ use crate::{
 pub use crate::{
     base::ConvolutionBuilder,
     buffers::{FeatureMap, FeatureMapShape, Layout},
-    params::{I8Params, Params, WithParams},
+    params::{I8Params, Params},
 };
 
 const SOURCE: &str = include_str!(concat!(env!("OUT_DIR"), "/conv.cl"));
 
 /// Supported element types for convolutions.
-pub trait ConvElement: OclPrm + Copy + Default + WithParams + 'static {
+pub trait ConvElement: OclPrm + Copy + 'static {
     /// Type of the multiply-add accumulator.
-    type Acc: OclPrm + Copy + Default + 'static;
+    type Acc: OclPrm + Copy + 'static;
+    /// Parameters of the convolution.
+    type Params: Copy + Into<Params> + Into<Self::ClParams>;
+    /// OpenCL-friendly version of parameters. This is considered an implementation detail.
+    type ClParams: OclPrm;
 }
 
 impl ConvElement for f32 {
     type Acc = f32;
+    type Params = Params;
+    type ClParams = crate::params::ClParams;
 }
 
 impl ConvElement for i8 {
     type Acc = i32;
+    type Params = I8Params;
+    type ClParams = crate::params::ClI8Params;
 }
 
 impl ConvolutionBuilder<f32> {
@@ -171,8 +179,17 @@ impl ConvolutionBuilder<i8> {
 }
 
 /// Convolution without pinned memory.
-#[derive(Debug)]
-pub struct Convolution<T: ConvElement>(Base<T>);
+pub struct Convolution<T: ConvElement>(Base<PhantomData<T>>);
+
+impl<T> fmt::Debug for Convolution<T>
+where
+    T: ConvElement,
+    T::Params: fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_tuple("Convolution").field(&self.0).finish()
+    }
+}
 
 impl Convolution<f32> {
     /// Creates a new floating-point convolution builder. `size` determines the filter size
@@ -181,7 +198,7 @@ impl Convolution<f32> {
     /// # Panics
     ///
     /// Panics if the filter `size` is even.
-    pub fn f32(size: usize) -> ocl::Result<ConvolutionBuilder<f32>> {
+    pub fn f32(size: u32) -> ocl::Result<ConvolutionBuilder<f32>> {
         ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 32)], SOURCE)
     }
 }
@@ -249,19 +266,19 @@ impl Convolution<i8> {
     /// # Panics
     ///
     /// Panics if the filter `size` is even.
-    pub fn i8(size: usize) -> ocl::Result<ConvolutionBuilder<i8>> {
+    pub fn i8(size: u32) -> ocl::Result<ConvolutionBuilder<i8>> {
         ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 8)], SOURCE)
     }
 }
 
 impl<T: ConvElement> Convolution<T> {
     /// Spatial size of the convolution.
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u32 {
         self.0.size()
     }
 
     /// Returns general parameters of the convolution.
-    pub fn params(&self) -> &T::Params {
+    pub fn params(&self) -> T::Params {
         self.0.params()
     }
 
@@ -310,13 +327,12 @@ impl<T: ConvElement> Convolution<T> {
     ///
     /// # Panics
     ///
-    /// - The method will panic if `filters` do not have expected spatial dimensions, i.e.,
+    /// - Panics if `filters` do not have expected spatial dimensions, i.e.,
     ///   `self.size() x self.size()`.
-    /// - Likewise, the method will panic if the number of input channels differs from number of
-    ///   channels in `filters`.
+    /// - Panics if the number of input channels differs from number of channels in `filters`.
     pub fn compute<'a>(
         &self,
-        signal: FeatureMap<T>,
+        signal: FeatureMap<'_, T>,
         filters: impl Into<ArrayView4<'a, T>>,
     ) -> ocl::Result<Array4<T>> {
         self.0.compute(signal, filters.into(), None)
@@ -325,10 +341,10 @@ impl<T: ConvElement> Convolution<T> {
     /// Performs convolution on the provided `signal` and `filters`, with the output offset
     /// by the provided per-filter biases.
     ///
-    /// Parameters, return value and panics are generally the same as for [`Self::compute()`].
+    /// Parameters, return value and panics are the same as for [`Self::compute()`].
     pub fn compute_with_biases<'a>(
         &self,
-        signal: FeatureMap<T>,
+        signal: FeatureMap<'_, T>,
         filters: impl Into<ArrayView4<'a, T>>,
         filter_biases: &[T::Acc],
     ) -> ocl::Result<Array4<T>> {
@@ -341,17 +357,29 @@ impl<T: ConvElement> Convolution<T> {
 ///
 /// `FiltersConvolution` can be created by calling [`with_filters()`](Convolution::with_filters())
 /// or [`with_biased_filters()`](Convolution::with_biased_filters()) methods in `Convolution`.
-#[derive(Debug)]
 pub struct FiltersConvolution<T: ConvElement>(Base<Filters<T>>);
+
+impl<T> fmt::Debug for FiltersConvolution<T>
+where
+    T: ConvElement,
+    T::Params: fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("FiltersConvolution")
+            .field(&self.0)
+            .finish()
+    }
+}
 
 impl<T: ConvElement> FiltersConvolution<T> {
     /// Spatial size of the convolution.
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u32 {
         self.0.size()
     }
 
     /// Returns general parameters of the convolution.
-    pub fn params(&self) -> &T::Params {
+    pub fn params(&self) -> T::Params {
         self.0.params()
     }
 
@@ -366,7 +394,7 @@ impl<T: ConvElement> FiltersConvolution<T> {
     }
 
     /// Computes the convolution on the provided signal.
-    pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
+    pub fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
         self.0.compute(signal)
     }
 }
@@ -376,17 +404,29 @@ impl<T: ConvElement> FiltersConvolution<T> {
 ///
 /// `PinnedConvolution` can be created from a [`FiltersConvolution`] by calling
 /// [`pin()`](FiltersConvolution::pin()).
-#[derive(Debug)]
 pub struct PinnedConvolution<T: ConvElement>(Base<Pinned<T>>);
+
+impl<T> fmt::Debug for PinnedConvolution<T>
+where
+    T: ConvElement,
+    T::Params: fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("PinnedConvolution")
+            .field(&self.0)
+            .finish()
+    }
+}
 
 impl<T: ConvElement> PinnedConvolution<T> {
     /// Spatial size of the convolution.
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u32 {
         self.0.size()
     }
 
     /// Returns general parameters of the convolution.
-    pub fn params(&self) -> &T::Params {
+    pub fn params(&self) -> T::Params {
         self.0.params()
     }
 
@@ -395,9 +435,13 @@ impl<T: ConvElement> PinnedConvolution<T> {
         self.0.set_params(params)
     }
 
-    /// Computes the convolution on the provided signal. Signal dimensions must agree with
-    /// the ones provided to the [`pin()` method](FiltersConvolution::pin()).
-    pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
+    /// Computes the convolution on the provided signal.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if signal dimensions do not agree with the ones provided
+    ///   to the [`pin()` method](FiltersConvolution::pin()).
+    pub fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
         self.0.compute(signal)
     }
 }

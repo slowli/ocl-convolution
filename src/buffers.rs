@@ -5,50 +5,68 @@ use ocl::{flags, prm::Uint3, Buffer, Kernel};
 
 use std::{borrow::Cow, convert::TryFrom};
 
-use crate::{base::Base, params::OutputParams, ConvElement, Params, WithParams};
+use crate::{
+    base::Base,
+    params::{OutputParams, WithParams},
+    ConvElement, Params,
+};
 
 /// Shape of a [`FeatureMap`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FeatureMapShape {
     /// Number of samples constituting the map.
-    pub batch_size: usize,
+    pub batch_size: u32,
     /// Spatial width.
-    pub width: usize,
+    pub width: u32,
     /// Spatial height.
-    pub height: usize,
+    pub height: u32,
     /// Number of channels.
-    pub channels: usize,
+    pub channels: u32,
 }
 
 impl FeatureMapShape {
     fn from_nhwc_slice(shape: &[usize]) -> Self {
         assert_eq!(shape.len(), 4);
         FeatureMapShape {
-            batch_size: shape[0],
-            height: shape[1],
-            width: shape[2],
-            channels: shape[3],
+            batch_size: u32::try_from(shape[0]).expect("Cannot convert batch size to `u32`"),
+            height: u32::try_from(shape[1]).expect("Cannot convert height to `u32`"),
+            width: u32::try_from(shape[2]).expect("Cannot convert width to `u32`"),
+            channels: u32::try_from(shape[3]).expect("Cannot convert channel count to `u32`"),
         }
     }
 
     fn from_nchw_slice(shape: &[usize]) -> Self {
         assert_eq!(shape.len(), 4);
         FeatureMapShape {
-            batch_size: shape[0],
-            height: shape[2],
-            width: shape[3],
-            channels: shape[1],
+            batch_size: u32::try_from(shape[0]).expect("Cannot convert batch size to `u32`"),
+            height: u32::try_from(shape[2]).expect("Cannot convert height to `u32`"),
+            width: u32::try_from(shape[3]).expect("Cannot convert width to `u32`"),
+            channels: u32::try_from(shape[1]).expect("Cannot convert channel count to `u32`"),
         }
     }
 
+    // `unwrap()` is safe: we've converted from `usize` previously.
     fn buffer_len(self) -> usize {
-        self.batch_size * self.width * self.height * self.channels
+        self.batch_size as usize
+            * self.width as usize
+            * self.height as usize
+            * self.channels as usize
     }
 
     fn as_array(self, layout: Layout) -> [usize; 4] {
         match layout {
-            Layout::ChannelsFirst => [self.batch_size, self.channels, self.height, self.width],
-            Layout::ChannelsLast => [self.batch_size, self.height, self.width, self.channels],
+            Layout::ChannelsFirst => [
+                self.batch_size as usize,
+                self.channels as usize,
+                self.height as usize,
+                self.width as usize,
+            ],
+            Layout::ChannelsLast => [
+                self.batch_size as usize,
+                self.height as usize,
+                self.width as usize,
+                self.channels as usize,
+            ],
         }
     }
 }
@@ -75,22 +93,35 @@ pub enum Layout {
 pub struct FeatureMap<'a, T> {
     layout: Layout,
     inner: ArrayView4<'a, T>,
+    shape: FeatureMapShape,
 }
 
 impl<'a, T: ConvElement> FeatureMap<'a, T> {
     /// Constructs a map from an NCHW-ordered tensor.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `array` dimensions do not fit into `u32` integers.
     pub fn nchw(array: impl Into<ArrayView4<'a, T>>) -> Self {
+        let array = array.into();
         Self {
             layout: Layout::ChannelsFirst,
-            inner: array.into(),
+            shape: FeatureMapShape::from_nchw_slice(array.shape()),
+            inner: array,
         }
     }
 
     /// Constructs a map from an NHWC-ordered tensor.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `array` dimensions do not fit into `u32` integers.
     pub fn nhwc(array: impl Into<ArrayView4<'a, T>>) -> Self {
+        let array = array.into();
         Self {
             layout: Layout::ChannelsLast,
-            inner: array.into(),
+            shape: FeatureMapShape::from_nhwc_slice(array.shape()),
+            inner: array,
         }
     }
 
@@ -101,10 +132,7 @@ impl<'a, T: ConvElement> FeatureMap<'a, T> {
 
     /// Gets the shape of this map.
     pub fn shape(self) -> FeatureMapShape {
-        match self.layout {
-            Layout::ChannelsFirst => FeatureMapShape::from_nchw_slice(self.inner.shape()),
-            Layout::ChannelsLast => FeatureMapShape::from_nhwc_slice(self.inner.shape()),
-        }
+        self.shape
     }
 
     fn to_nhwc(self) -> ArrayView4<'a, T> {
@@ -117,29 +145,30 @@ impl<'a, T: ConvElement> FeatureMap<'a, T> {
 
 /// Container for convolution filters and optionally filter biases.
 #[derive(Debug, Clone)]
-pub struct Filters<T: ConvElement> {
+pub(crate) struct Filters<T: ConvElement> {
     inner: Buffer<T>,
     biases: Option<Buffer<T::Acc>>,
-    filter_count: usize,
-    channel_count: usize,
+    filter_count: u32,
+    channel_count: u32,
 }
 
 impl<T: ConvElement> Filters<T> {
-    pub(crate) fn filter_count(&self) -> usize {
+    pub fn filter_count(&self) -> u32 {
         self.filter_count
     }
 
-    pub(crate) fn channel_count(&self) -> usize {
+    pub fn channel_count(&self) -> u32 {
         self.channel_count
     }
 
-    pub(crate) fn new<U: WithParams>(
-        filters: ArrayView4<T>,
+    pub fn new<U: WithParams>(
+        filters: ArrayView4<'_, T>,
         biases: Option<&[T::Acc]>,
         conv: &Base<U>,
     ) -> ocl::Result<Self> {
         assert!(
-            filters.shape()[1] == conv.size() && filters.shape()[2] == conv.size(),
+            filters.shape()[1] == conv.size() as usize
+                && filters.shape()[2] == conv.size() as usize,
             "Invalid filter shape: expected {0}x{0}, got {1}x{2}",
             conv.size(),
             filters.shape()[1],
@@ -182,12 +211,14 @@ impl<T: ConvElement> Filters<T> {
         Ok(Self {
             inner: filters_buffer,
             biases: filter_biases,
-            filter_count: filters.shape()[0],
-            channel_count: filters.shape()[3],
+            filter_count: u32::try_from(filters.shape()[0])
+                .expect("Cannot convert filter count to `u32`"),
+            channel_count: u32::try_from(filters.shape()[3])
+                .expect("Cannot convert channel count to `u32`"),
         })
     }
 
-    pub(crate) fn pass_as_arguments(&self, kernel: &Kernel) -> ocl::Result<()> {
+    pub fn pass_as_arguments(&self, kernel: &Kernel) -> ocl::Result<()> {
         kernel.set_arg("filters", &self.inner)?;
         if let Some(ref biases) = self.biases {
             kernel.set_arg("filter_biases", biases)?;
@@ -198,7 +229,7 @@ impl<T: ConvElement> Filters<T> {
 
 /// Container for convolution input and output.
 #[derive(Debug, Clone)]
-pub struct InputAndOutput<T: ConvElement> {
+pub(crate) struct InputAndOutput<T: ConvElement> {
     signal_buffer: Buffer<T>,
     signal_dims: Uint3,
     batch_size: u32,
@@ -209,7 +240,7 @@ pub struct InputAndOutput<T: ConvElement> {
 impl<T: ConvElement> InputAndOutput<T> {
     pub fn new<U: WithParams>(
         signal_shape: FeatureMapShape,
-        filter_count: usize,
+        filter_count: u32,
         conv: &Base<U>,
     ) -> ocl::Result<Self> {
         let Params {
@@ -217,7 +248,7 @@ impl<T: ConvElement> InputAndOutput<T> {
             strides,
             dilation,
             ..
-        } = U::get_generic_params(&conv.params());
+        } = conv.params().into();
         let effective_kernel_h = conv.size() + (dilation[0] - 1) * (conv.size() - 1);
         let out_h = (signal_shape.height - effective_kernel_h + pads[0] + pads[2]) / strides[0] + 1;
         let effective_kernel_w = conv.size() + (dilation[1] - 1) * (conv.size() - 1);
@@ -241,21 +272,20 @@ impl<T: ConvElement> InputAndOutput<T> {
             .build()?;
 
         let signal_dims = Uint3::new(
-            u32::try_from(signal_shape.height).expect("Cannot convert signal dimension to `u32`"),
-            u32::try_from(signal_shape.width).expect("Cannot convert signal dimension to `u32`"),
-            u32::try_from(signal_shape.channels).expect("Cannot convert signal dimension to `u32`"),
+            signal_shape.height,
+            signal_shape.width,
+            signal_shape.channels,
         );
         Ok(InputAndOutput {
             signal_buffer,
             signal_dims,
-            batch_size: u32::try_from(signal_shape.batch_size)
-                .expect("Cannot convert signal dimension to `u32`"),
+            batch_size: signal_shape.batch_size,
             output_buffer,
             output_shape,
         })
     }
 
-    pub fn write_signal(&self, signal: FeatureMap<T>) -> ocl::Result<()> {
+    pub fn write_signal(&self, signal: FeatureMap<'_, T>) -> ocl::Result<()> {
         let signal = signal.to_nhwc();
         let signal_slice = signal.as_slice().map_or_else(
             || Cow::Owned(signal.iter().cloned().collect()),
@@ -273,17 +303,18 @@ impl<T: ConvElement> InputAndOutput<T> {
         kernel.set_arg(
             "out_params",
             OutputParams {
-                batch_size: u32::try_from(s.batch_size)
-                    .expect("Cannot convert output dimension to `u32`"),
+                batch_size: s.batch_size,
                 layout: out_layout,
             },
         )?;
         kernel.set_arg("output", &self.output_buffer)?;
         kernel.set_arg("signal", &self.signal_buffer)?;
 
-        let command = kernel
-            .cmd()
-            .global_work_size([s.height * s.batch_size, s.width, s.channels]);
+        let command = kernel.cmd().global_work_size([
+            s.height as usize * s.batch_size as usize,
+            s.width as usize,
+            s.channels as usize,
+        ]);
         unsafe {
             command.enq()?;
         }
@@ -298,8 +329,8 @@ impl<T: ConvElement> InputAndOutput<T> {
 
 /// Container for convolution filters (with optional filter biases), signal and output.
 #[derive(Debug, Clone)]
-pub struct Pinned<T: ConvElement> {
-    pub(crate) filters: Filters<T>,
-    pub(crate) io: InputAndOutput<T>,
-    pub(crate) signal_shape: FeatureMapShape,
+pub(crate) struct Pinned<T: ConvElement> {
+    pub filters: Filters<T>,
+    pub io: InputAndOutput<T>,
+    pub signal_shape: FeatureMapShape,
 }

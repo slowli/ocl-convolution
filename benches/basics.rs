@@ -28,7 +28,7 @@ impl Memory {
     }
 }
 
-fn run_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
+fn run_convolution(bencher: &mut Bencher<'_>, channels: usize, memory: Memory) {
     let convolution = Convolution::f32(3)
         .unwrap()
         .build(Params::default())
@@ -60,9 +60,9 @@ fn run_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
                 .unwrap()
                 .pin(FeatureMapShape {
                     batch_size: 1,
-                    width: INPUT_SIZE,
-                    height: INPUT_SIZE,
-                    channels,
+                    width: INPUT_SIZE as u32,
+                    height: INPUT_SIZE as u32,
+                    channels: channels as u32,
                 })
                 .unwrap();
             bencher.iter(|| convolution.compute(signal).unwrap());
@@ -70,7 +70,7 @@ fn run_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
     }
 }
 
-fn run_batched_convolution(bencher: &mut Bencher, channels: usize, sequential: bool) {
+fn run_batched_convolution(bencher: &mut Bencher<'_>, channels: usize, sequential: bool) {
     const BATCH_SIZE: usize = 8;
 
     let convolution = Convolution::f32(3)
@@ -106,7 +106,7 @@ fn run_batched_convolution(bencher: &mut Bencher, channels: usize, sequential: b
     }
 }
 
-fn run_i8_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
+fn run_i8_convolution(bencher: &mut Bencher<'_>, channels: usize, memory: Memory) {
     const BIT_SHIFT: u8 = 8;
 
     let scale = I8Params::convert_scale(BIT_SHIFT, (channels as f32).sqrt().recip());
@@ -143,9 +143,9 @@ fn run_i8_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
                 .unwrap()
                 .pin(FeatureMapShape {
                     batch_size: 1,
-                    width: INPUT_SIZE,
-                    height: INPUT_SIZE,
-                    channels,
+                    width: INPUT_SIZE as u32,
+                    height: INPUT_SIZE as u32,
+                    channels: channels as u32,
                 })
                 .unwrap();
             bencher.iter(|| convolution.compute(signal).unwrap())

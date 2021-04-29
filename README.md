@@ -12,7 +12,7 @@ are particularly useful for deep learning tasks, such as image recognition;
 they are a basic building block for [convolutional neural networks][cnn].
 
 The library is intended mostly for quick-and-dirty hacking in deep learning research,
-in which one needs a separate spatial convolution primitive. Note that full-scale
+in which one needs a separate spatial convolution primitive. Full-scale
 DL frameworks (TensorFlow, PyTorch, etc.) will most probably be a more robust and scalable
 tool for more high-level tasks.
 
@@ -33,29 +33,28 @@ OpenCL has [a variety of implementations](https://www.khronos.org/opencl/resourc
 For quick testing, one may use [POCL](https://github.com/pocl/pocl); it is open source
 and not tied to hardware (at the cost of being CPU-based, i.e., orders of magnitude
 slower than OpenCL implementations by GPU vendors).
-POCL may be installed from sources with the commands like these
-(showcased here for Ubuntu Bionic):
+POCL [can be installed from sources](http://portablecl.org/docs/html/install.html)
+with the commands like these (showcased for Ubuntu Bionic):
 
 ```bash
 # Install utils for build
 apt-get install build-essential cmake pkg-config libhwloc-dev zlib1g-dev
 # Install OpenCL-related utils
 apt-get install ocl-icd-libopencl1 ocl-icd-dev ocl-icd-opencl-dev clinfo
-# Install LLVM / Clang from the official APT repository
-wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - 
-add-apt-repository 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main'
-apt-get update
-apt-get install clang-9 libclang-9-dev llvm-9 llvm-9-dev
+# Install LLVM / Clang
+apt-get install clang-11 libclang-11-dev llvm-11 llvm-11-dev \
+  libclang-cpp11 libclang-cpp11-dev
 
 # Get POCL sources
-export POCL_VER=1.5 # latest stable version
-curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
+export POCL_VER=1.6 # latest stable version
+curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" \
+  > pocl-$POCL_VER.tar.gz
 tar xf "pocl-$POCL_VER.tar.gz"
 # Build POCL from the sources
 cd pocl-$POCL_VER
 mkdir build && cd build
-cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 -DCMAKE_INSTALL_PREFIX=/usr ..
-make
+cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-11 -DCMAKE_INSTALL_PREFIX=/usr ..
+make && make install
 
 # Verify installation
 clinfo

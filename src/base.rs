@@ -9,12 +9,15 @@ use std::{convert::TryFrom, marker::PhantomData, sync::Mutex};
 
 use crate::{
     buffers::{FeatureMap, FeatureMapShape, Filters, InputAndOutput, Pinned},
-    params::{OutputParams, WithParams},
+    params::{OutputParams, Params, WithParams},
     ConvElement,
 };
 
 /// Convolution builder. The same builder can be used to create multiple `Convolution`s
 /// which share the same spatial size.
+///
+/// A builder can be created using [`Convolution::f32()`](crate::Convolution::f32()) or
+/// [`Convolution::i8()`](crate::Convolution::i8()) methods.
 #[derive(Debug)]
 pub struct ConvolutionBuilder<T> {
     program: ProQue,
@@ -87,7 +90,7 @@ fn create_io<T: ConvElement, U: WithParams>(
 ) -> ocl::Result<InputAndOutput<T>> {
     assert_eq!(
         signal_shape.channels,
-        filters.channel_count() * U::get_generic_params(&conv.params).groups,
+        filters.channel_count() * Into::<Params>::into(conv.params).groups,
         "Channel dimensionality in signal and filters must agree"
     );
     let io = InputAndOutput::new(signal_shape, filters.filter_count(), conv)?;
@@ -95,7 +98,7 @@ fn create_io<T: ConvElement, U: WithParams>(
 }
 
 #[derive(Debug)]
-pub struct Base<T: WithParams> {
+pub(crate) struct Base<T: WithParams> {
     size: u32,
     params: T::Params,
     kernel: Kernel,
@@ -118,13 +121,14 @@ impl<T: WithParams> Base<T> {
         self.size
     }
 
-    pub fn params(&self) -> &T::Params {
-        &self.params
+    pub fn params(&self) -> T::Params {
+        self.params
     }
 
     pub fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
-        self.params = params.clone();
-        self.kernel.set_arg("params", params.into())
+        self.params = params;
+        self.kernel
+            .set_arg("params", Into::<T::ClParams>::into(params))
     }
 }
 
@@ -138,7 +142,7 @@ impl<T: ConvElement> Base<T> {
             .arg_named("signal_dims", Uint3::new(0, 0, 0))
             .arg_named("filters", None::<&Buffer<T>>)
             .arg_named("filter_biases", None::<&Buffer<T::Acc>>)
-            .arg_named("params", params.clone().into())
+            .arg_named("params", Into::<T::ClParams>::into(params))
             .build()?;
         Ok(Base {
             size: builder.filter_size,
@@ -174,7 +178,7 @@ impl<T: ConvElement> Base<T> {
             u32::try_from(filters.shape()[3]).expect("Cannot convert filter dimension to `u32`");
         assert_eq!(
             signal.shape().channels,
-            filter_channels * T::get_generic_params(&self.params).groups,
+            filter_channels * Into::<Params>::into(self.params).groups,
             "Channel dimensionality in signal and filters must agree"
         );
 

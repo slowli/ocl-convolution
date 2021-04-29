@@ -259,7 +259,7 @@ impl<T: ConvElement> Convolution<T> {
     }
 
     /// Returns general parameters of the convolution.
-    pub fn params(&self) -> &T::Params {
+    pub fn params(&self) -> T::Params {
         self.0.params()
     }
 
@@ -308,10 +308,9 @@ impl<T: ConvElement> Convolution<T> {
     ///
     /// # Panics
     ///
-    /// - The method will panic if `filters` do not have expected spatial dimensions, i.e.,
+    /// - Panics if `filters` do not have expected spatial dimensions, i.e.,
     ///   `self.size() x self.size()`.
-    /// - Likewise, the method will panic if the number of input channels differs from number of
-    ///   channels in `filters`.
+    /// - Panics if the number of input channels differs from number of channels in `filters`.
     pub fn compute<'a>(
         &self,
         signal: FeatureMap<T>,
@@ -323,7 +322,7 @@ impl<T: ConvElement> Convolution<T> {
     /// Performs convolution on the provided `signal` and `filters`, with the output offset
     /// by the provided per-filter biases.
     ///
-    /// Parameters, return value and panics are generally the same as for [`Self::compute()`].
+    /// Parameters, return value and panics are the same as for [`Self::compute()`].
     pub fn compute_with_biases<'a>(
         &self,
         signal: FeatureMap<T>,
@@ -349,7 +348,7 @@ impl<T: ConvElement> FiltersConvolution<T> {
     }
 
     /// Returns general parameters of the convolution.
-    pub fn params(&self) -> &T::Params {
+    pub fn params(&self) -> T::Params {
         self.0.params()
     }
 
@@ -384,7 +383,7 @@ impl<T: ConvElement> PinnedConvolution<T> {
     }
 
     /// Returns general parameters of the convolution.
-    pub fn params(&self) -> &T::Params {
+    pub fn params(&self) -> T::Params {
         self.0.params()
     }
 
@@ -393,8 +392,12 @@ impl<T: ConvElement> PinnedConvolution<T> {
         self.0.set_params(params)
     }
 
-    /// Computes the convolution on the provided signal. Signal dimensions must agree with
-    /// the ones provided to the [`pin()` method](FiltersConvolution::pin()).
+    /// Computes the convolution on the provided signal.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if signal dimensions do not agree with the ones provided
+    ///   to the [`pin()` method](FiltersConvolution::pin()).
     pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
         self.0.compute(signal)
     }

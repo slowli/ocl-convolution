@@ -141,7 +141,7 @@ impl<'a, T: ConvElement> FeatureMap<'a, T> {
 
 /// Container for convolution filters and optionally filter biases.
 #[derive(Debug, Clone)]
-pub struct Filters<T: ConvElement> {
+pub(crate) struct Filters<T: ConvElement> {
     inner: Buffer<T>,
     biases: Option<Buffer<T::Acc>>,
     filter_count: u32,
@@ -149,15 +149,15 @@ pub struct Filters<T: ConvElement> {
 }
 
 impl<T: ConvElement> Filters<T> {
-    pub(crate) fn filter_count(&self) -> u32 {
+    pub fn filter_count(&self) -> u32 {
         self.filter_count
     }
 
-    pub(crate) fn channel_count(&self) -> u32 {
+    pub fn channel_count(&self) -> u32 {
         self.channel_count
     }
 
-    pub(crate) fn new<U: WithParams>(
+    pub fn new<U: WithParams>(
         filters: ArrayView4<T>,
         biases: Option<&[T::Acc]>,
         conv: &Base<U>,
@@ -214,7 +214,7 @@ impl<T: ConvElement> Filters<T> {
         })
     }
 
-    pub(crate) fn pass_as_arguments(&self, kernel: &Kernel) -> ocl::Result<()> {
+    pub fn pass_as_arguments(&self, kernel: &Kernel) -> ocl::Result<()> {
         kernel.set_arg("filters", &self.inner)?;
         if let Some(ref biases) = self.biases {
             kernel.set_arg("filter_biases", biases)?;
@@ -225,7 +225,7 @@ impl<T: ConvElement> Filters<T> {
 
 /// Container for convolution input and output.
 #[derive(Debug, Clone)]
-pub struct InputAndOutput<T: ConvElement> {
+pub(crate) struct InputAndOutput<T: ConvElement> {
     signal_buffer: Buffer<T>,
     signal_dims: Uint3,
     batch_size: u32,
@@ -244,7 +244,7 @@ impl<T: ConvElement> InputAndOutput<T> {
             strides,
             dilation,
             ..
-        } = U::get_generic_params(&conv.params());
+        } = conv.params().into();
         let effective_kernel_h = conv.size() + (dilation[0] - 1) * (conv.size() - 1);
         let out_h = (signal_shape.height - effective_kernel_h + pads[0] + pads[2]) / strides[0] + 1;
         let effective_kernel_w = conv.size() + (dilation[1] - 1) * (conv.size() - 1);
@@ -325,8 +325,8 @@ impl<T: ConvElement> InputAndOutput<T> {
 
 /// Container for convolution filters (with optional filter biases), signal and output.
 #[derive(Debug, Clone)]
-pub struct Pinned<T: ConvElement> {
-    pub(crate) filters: Filters<T>,
-    pub(crate) io: InputAndOutput<T>,
-    pub(crate) signal_shape: FeatureMapShape,
+pub(crate) struct Pinned<T: ConvElement> {
+    pub filters: Filters<T>,
+    pub io: InputAndOutput<T>,
+    pub signal_shape: FeatureMapShape,
 }

@@ -105,7 +105,7 @@ impl I8Params {
     pub fn convert_scale(bit_shift: u8, scale: f32) -> i32 {
         let scale = (2.0_f32.powi(i32::from(bit_shift)) * scale).round();
         assert!(
-            scale >= i32::min_value() as f32 && scale <= i32::max_value() as f32,
+            scale >= i32::MIN as f32 && scale <= i32::MAX as f32,
             "Scale is out of `i32` bounds"
         );
         scale as i32
@@ -148,7 +148,7 @@ unsafe impl OclPrm for ClI8Params {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
 #[repr(C, packed)]
-pub struct OutputParams {
+pub(crate) struct OutputParams {
     pub batch_size: u32,
     pub layout: Layout,
 }
@@ -167,46 +167,27 @@ impl Default for OutputParams {
 /// Type that can be associated with convolution parameters.
 pub trait WithParams {
     /// Parameters of the convolution.
-    type Params: Clone + fmt::Debug + Into<Self::ClParams>;
+    type Params: Copy + fmt::Debug + Into<Params> + Into<Self::ClParams>;
     /// OpenCL-friendly version of parameters.
     type ClParams: OclPrm;
-
-    /// Extracts generic parameters.
-    fn get_generic_params(params: &Self::Params) -> Params;
 }
 
 impl WithParams for f32 {
     type Params = Params;
     type ClParams = ClParams;
-
-    fn get_generic_params(params: &Self::Params) -> Params {
-        *params
-    }
 }
 
 impl WithParams for i8 {
     type Params = I8Params;
     type ClParams = ClI8Params;
-
-    fn get_generic_params(params: &Self::Params) -> Params {
-        params.common
-    }
 }
 
 impl<T: ConvElement> WithParams for Filters<T> {
     type Params = <T as WithParams>::Params;
     type ClParams = <T as WithParams>::ClParams;
-
-    fn get_generic_params(params: &Self::Params) -> Params {
-        T::get_generic_params(params)
-    }
 }
 
 impl<T: ConvElement> WithParams for Pinned<T> {
     type Params = <T as WithParams>::Params;
     type ClParams = <T as WithParams>::ClParams;
-
-    fn get_generic_params(params: &Self::Params) -> Params {
-        T::get_generic_params(params)
-    }
 }

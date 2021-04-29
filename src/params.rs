@@ -80,7 +80,7 @@ unsafe impl OclPrm for ClParams {}
 ///
 /// See [`Convolution`] docs for details how to set these parameters.
 ///
-/// [`Convolution`]: struct.Convolution.html#connection-to-real-value-convolution
+/// [`Convolution`]: crate::Convolution#connection-to-real-value-convolution
 #[derive(Debug, Clone, Copy)]
 pub struct I8Params {
     /// Common parameters.

@@ -30,7 +30,6 @@
 //! [cnn]: https://en.wikipedia.org/wiki/Convolutional_neural_network
 //! [OpenCL]: https://www.khronos.org/opencl/
 //! [this paper]: https://dl.acm.org/citation.cfm?id=3001177
-//! [`Convolution`]: struct.Convolution.html
 //!
 //! # Examples
 //!
@@ -113,7 +112,6 @@
 //! ```
 
 #![doc(html_root_url = "https://docs.rs/ocl-convolution/0.2.0")]
-#![deny(missing_docs, missing_debug_implementations)]
 #![warn(missing_debug_implementations, missing_docs, bare_trait_objects)]
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(

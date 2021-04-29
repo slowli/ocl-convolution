@@ -18,14 +18,14 @@ use crate::{
 #[derive(Debug)]
 pub struct ConvolutionBuilder<T> {
     program: ProQue,
-    filter_size: usize,
+    filter_size: u32,
     _element_type: PhantomData<T>,
 }
 
 impl<T: ConvElement> ConvolutionBuilder<T> {
     /// Initializes a builder with a specific filter size.
     pub(crate) fn new(
-        filter_size: usize,
+        filter_size: u32,
         defines: &[(&'static str, i32)],
         source: &str,
     ) -> ocl::Result<Self> {
@@ -96,7 +96,7 @@ fn create_io<T: ConvElement, U: WithParams>(
 
 #[derive(Debug)]
 pub struct Base<T: WithParams> {
-    size: usize,
+    size: u32,
     params: T::Params,
     kernel: Kernel,
     buffers: T,
@@ -114,7 +114,7 @@ impl<T: WithParams> Base<T> {
             .expect("kernel must come with a pre-configured queue")
     }
 
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u32 {
         self.size
     }
 
@@ -170,13 +170,16 @@ impl<T: ConvElement> Base<T> {
         filters: ArrayView4<T>,
         filter_biases: Option<&[T::Acc]>,
     ) -> ocl::Result<Array4<T>> {
+        let filter_channels =
+            u32::try_from(filters.shape()[3]).expect("Cannot convert filter dimension to `u32`");
         assert_eq!(
             signal.shape().channels,
-            filters.shape()[3] * T::get_generic_params(&self.params).groups,
+            filter_channels * T::get_generic_params(&self.params).groups,
             "Channel dimensionality in signal and filters must agree"
         );
 
-        let filter_count = filters.shape()[0];
+        let filter_count =
+            u32::try_from(filters.shape()[0]).expect("Cannot convert filter count to `u32`");
         let filters = Filters::new(filters, filter_biases, self)?;
         filters.pass_as_arguments(&self.kernel)?;
         let io = InputAndOutput::new(signal.shape(), filter_count, self)?;

@@ -179,7 +179,7 @@ impl Convolution<f32> {
     /// # Panics
     ///
     /// Panics if the filter `size` is even.
-    pub fn f32(size: usize) -> ocl::Result<ConvolutionBuilder<f32>> {
+    pub fn f32(size: u32) -> ocl::Result<ConvolutionBuilder<f32>> {
         ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 32)], SOURCE)
     }
 }
@@ -247,14 +247,14 @@ impl Convolution<i8> {
     /// # Panics
     ///
     /// Panics if the filter `size` is even.
-    pub fn i8(size: usize) -> ocl::Result<ConvolutionBuilder<i8>> {
+    pub fn i8(size: u32) -> ocl::Result<ConvolutionBuilder<i8>> {
         ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 8)], SOURCE)
     }
 }
 
 impl<T: ConvElement> Convolution<T> {
     /// Spatial size of the convolution.
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u32 {
         self.0.size()
     }
 
@@ -344,7 +344,7 @@ pub struct FiltersConvolution<T: ConvElement>(Base<Filters<T>>);
 
 impl<T: ConvElement> FiltersConvolution<T> {
     /// Spatial size of the convolution.
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u32 {
         self.0.size()
     }
 
@@ -379,7 +379,7 @@ pub struct PinnedConvolution<T: ConvElement>(Base<Pinned<T>>);
 
 impl<T: ConvElement> PinnedConvolution<T> {
     /// Spatial size of the convolution.
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u32 {
         self.0.size()
     }
 

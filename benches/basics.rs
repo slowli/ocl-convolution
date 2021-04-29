@@ -60,9 +60,9 @@ fn run_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
                 .unwrap()
                 .pin(FeatureMapShape {
                     batch_size: 1,
-                    width: INPUT_SIZE,
-                    height: INPUT_SIZE,
-                    channels,
+                    width: INPUT_SIZE as u32,
+                    height: INPUT_SIZE as u32,
+                    channels: channels as u32,
                 })
                 .unwrap();
             bencher.iter(|| convolution.compute(signal).unwrap());
@@ -143,9 +143,9 @@ fn run_i8_convolution(bencher: &mut Bencher, channels: usize, memory: Memory) {
                 .unwrap()
                 .pin(FeatureMapShape {
                     batch_size: 1,
-                    width: INPUT_SIZE,
-                    height: INPUT_SIZE,
-                    channels,
+                    width: INPUT_SIZE as u32,
+                    height: INPUT_SIZE as u32,
+                    channels: channels as u32,
                 })
                 .unwrap();
             bencher.iter(|| convolution.compute(signal).unwrap())

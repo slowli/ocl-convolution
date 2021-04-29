@@ -5,7 +5,7 @@ use ocl::{
     OclPrm,
 };
 
-use std::{convert::TryFrom, fmt};
+use std::fmt;
 
 use crate::{
     buffers::{Filters, Layout, Pinned},
@@ -20,15 +20,15 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Params {
     /// Strides along spatial dimensions.
-    pub strides: [usize; 2],
+    pub strides: [u32; 2],
     /// Pads along spatial dimensions. The first 2 values denote pads at the beginning of
     /// rows / columns, the second 2 values – pads at the end.
-    pub pads: [usize; 4],
+    pub pads: [u32; 4],
     /// Number of groups in the convolution. Each group of filters will be applied to
     /// a subset of input channels.
-    pub groups: usize,
+    pub groups: u32,
     /// Signal dilation along spatial dimensions.
-    pub dilation: [usize; 2],
+    pub dilation: [u32; 2],
 }
 
 impl Default for Params {
@@ -54,21 +54,10 @@ pub struct ClParams {
 impl From<Params> for ClParams {
     fn from(value: Params) -> Self {
         ClParams {
-            strides: Uint2::new(
-                u32::try_from(value.strides[0]).expect("Cannot convert stride to `u32`"),
-                u32::try_from(value.strides[1]).expect("Cannot convert stride to `u32`"),
-            ),
-            pads: Uint4::new(
-                u32::try_from(value.pads[0]).expect("Cannot convert pad to `u32`"),
-                u32::try_from(value.pads[1]).expect("Cannot convert pad to `u32`"),
-                u32::try_from(value.pads[2]).expect("Cannot convert pad to `u32`"),
-                u32::try_from(value.pads[3]).expect("Cannot convert pad to `u32`"),
-            ),
-            groups: u32::try_from(value.groups).expect("Cannot convert groups to `u32`"),
-            dilation: Uint2::new(
-                u32::try_from(value.dilation[0]).expect("Cannot convert dilation to `u32`"),
-                u32::try_from(value.dilation[1]).expect("Cannot convert dilation to `u32`"),
-            ),
+            strides: Uint2::from(value.strides),
+            pads: Uint4::from(value.pads),
+            groups: value.groups,
+            dilation: Uint2::from(value.dilation),
         }
     }
 }

@@ -8,8 +8,8 @@ use std::{cmp, ops};
 use ocl_convolution::{Convolution, FeatureMap, I8Params, Params};
 
 fn slow_compute<T: LinalgScalar + ops::AddAssign>(
-    signal: ArrayView3<T>,
-    filters: ArrayView4<T>,
+    signal: ArrayView3<'_, T>,
+    filters: ArrayView4<'_, T>,
     bias: Option<&[T]>,
     params: Params,
 ) -> Array3<T> {

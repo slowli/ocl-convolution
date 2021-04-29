@@ -78,7 +78,7 @@ impl<T: ConvElement> ConvolutionBuilder<T> {
         })
     }
 
-    fn kernel_builder(&self) -> KernelBuilder {
+    fn kernel_builder(&self) -> KernelBuilder<'_> {
         self.program.kernel_builder("conv")
     }
 }
@@ -155,7 +155,7 @@ impl<T: ConvElement> Base<PhantomData<T>> {
 
     pub fn with_filters(
         self,
-        filters: ArrayView4<T>,
+        filters: ArrayView4<'_, T>,
         filter_biases: Option<&[T::Acc]>,
     ) -> ocl::Result<Base<Filters<T>>> {
         let filters = Filters::new(filters, filter_biases, &self)?;
@@ -170,8 +170,8 @@ impl<T: ConvElement> Base<PhantomData<T>> {
 
     pub fn compute(
         &self,
-        signal: FeatureMap<T>,
-        filters: ArrayView4<T>,
+        signal: FeatureMap<'_, T>,
+        filters: ArrayView4<'_, T>,
         filter_biases: Option<&[T::Acc]>,
     ) -> ocl::Result<Array4<T>> {
         let filter_channels =
@@ -209,7 +209,7 @@ impl<T: ConvElement> Base<Filters<T>> {
         })
     }
 
-    pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
+    pub fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
         let io = create_io(signal.shape(), &self.buffers, self)?;
         io.write_signal(signal)?;
         io.execute(&self.kernel, signal.layout())
@@ -217,7 +217,7 @@ impl<T: ConvElement> Base<Filters<T>> {
 }
 
 impl<T: ConvElement> Base<Pinned<T>> {
-    pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
+    pub fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
         assert_eq!(
             signal.shape(),
             self.buffers.signal_shape,

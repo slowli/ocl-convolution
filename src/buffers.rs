@@ -162,7 +162,7 @@ impl<T: ConvElement> Filters<T> {
     }
 
     pub fn new<U: WithParams>(
-        filters: ArrayView4<T>,
+        filters: ArrayView4<'_, T>,
         biases: Option<&[T::Acc]>,
         conv: &Base<U>,
     ) -> ocl::Result<Self> {
@@ -285,7 +285,7 @@ impl<T: ConvElement> InputAndOutput<T> {
         })
     }
 
-    pub fn write_signal(&self, signal: FeatureMap<T>) -> ocl::Result<()> {
+    pub fn write_signal(&self, signal: FeatureMap<'_, T>) -> ocl::Result<()> {
         let signal = signal.to_nhwc();
         let signal_slice = signal.as_slice().map_or_else(
             || Cow::Owned(signal.iter().cloned().collect()),

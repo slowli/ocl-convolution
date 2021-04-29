@@ -332,7 +332,7 @@ impl<T: ConvElement> Convolution<T> {
     /// - Panics if the number of input channels differs from number of channels in `filters`.
     pub fn compute<'a>(
         &self,
-        signal: FeatureMap<T>,
+        signal: FeatureMap<'_, T>,
         filters: impl Into<ArrayView4<'a, T>>,
     ) -> ocl::Result<Array4<T>> {
         self.0.compute(signal, filters.into(), None)
@@ -344,7 +344,7 @@ impl<T: ConvElement> Convolution<T> {
     /// Parameters, return value and panics are the same as for [`Self::compute()`].
     pub fn compute_with_biases<'a>(
         &self,
-        signal: FeatureMap<T>,
+        signal: FeatureMap<'_, T>,
         filters: impl Into<ArrayView4<'a, T>>,
         filter_biases: &[T::Acc],
     ) -> ocl::Result<Array4<T>> {
@@ -394,7 +394,7 @@ impl<T: ConvElement> FiltersConvolution<T> {
     }
 
     /// Computes the convolution on the provided signal.
-    pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
+    pub fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
         self.0.compute(signal)
     }
 }
@@ -441,7 +441,7 @@ impl<T: ConvElement> PinnedConvolution<T> {
     ///
     /// - Panics if signal dimensions do not agree with the ones provided
     ///   to the [`pin()` method](FiltersConvolution::pin()).
-    pub fn compute(&self, signal: FeatureMap<T>) -> ocl::Result<Array4<T>> {
+    pub fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
         self.0.compute(signal)
     }
 }

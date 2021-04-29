@@ -21,23 +21,21 @@ jobs:
 
       - name: Install packages
         run: |
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo add-apt-repository 'deb [arch=amd64] http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main'
           sudo apt-get update
           sudo apt-get install -y --no-install-suggests --no-install-recommends \
             build-essential cmake pkg-config libhwloc-dev zlib1g-dev \
             ocl-icd-libopencl1 ocl-icd-dev ocl-icd-opencl-dev clinfo \
-            clang-9 libclang-9-dev llvm-9 llvm-9-dev
+            clang-11 libclang-11-dev llvm-11 llvm-11-dev libclang-cpp11 libclang-cpp11-dev
 
       - name: Cache POCL binaries
         uses: actions/cache@v1
         with:
           path: ~/.local
-          key: ${{ runner.os }}-pocl1.5
+          key: ${{ runner.os }}-pocl1.6
 
       - name: Install POCL
         env:
-          POCL_VER: 1.5
+          POCL_VER: 1.6
         run: |
           if [[ ! -x ~/.local/pocl-$POCL_VER/build/bin/poclcc ]]; then
             mkdir -p ~/.local && cd ~/.local
@@ -45,7 +43,7 @@ jobs:
             tar xf "pocl-$POCL_VER.tar.gz"
             cd pocl-$POCL_VER
             mkdir -p build && cd build
-            cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 \
+            cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-11 \
               -DCMAKE_INSTALL_PREFIX=/usr \
               -DLLC_HOST_CPU=x86-64 ..
             make
@@ -109,24 +107,22 @@ jobs:
 
       - name: Install packages
         run: |
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo add-apt-repository 'deb [arch=amd64] http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main'
           sudo apt-get update
           sudo apt-get install -y --no-install-suggests --no-install-recommends \
             build-essential cmake pkg-config libhwloc-dev zlib1g-dev \
             ocl-icd-libopencl1 ocl-icd-dev ocl-icd-opencl-dev clinfo \
-            clang-9 libclang-9-dev llvm-9 llvm-9-dev
+            clang-11 libclang-11-dev llvm-11 llvm-11-dev libclang-cpp11 libclang-cpp11-dev
 
       # We intentionally reuse the same cache as for the `build` job.
       - name: Cache POCL binaries
         uses: actions/cache@v1
         with:
           path: ~/.local
-          key: ${{ runner.os }}-pocl1.5
+          key: ${{ runner.os }}-pocl1.6
 
       - name: Install POCL
         env:
-          POCL_VER: 1.5
+          POCL_VER: 1.6
         run: |
           if [[ ! -x ~/.local/pocl-$POCL_VER/build/bin/poclcc ]]; then
             mkdir -p ~/.local && cd ~/.local
@@ -134,7 +130,7 @@ jobs:
             tar xf "pocl-$POCL_VER.tar.gz"
             cd pocl-$POCL_VER
             mkdir -p build && cd build
-            cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 \
+            cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-11 \
               -DCMAKE_INSTALL_PREFIX=/usr \
               -DLLC_HOST_CPU=x86-64 ..
             make

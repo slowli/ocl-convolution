@@ -43,18 +43,19 @@ apt-get install build-essential cmake pkg-config libhwloc-dev zlib1g-dev
 apt-get install ocl-icd-libopencl1 ocl-icd-dev ocl-icd-opencl-dev clinfo
 # Install LLVM / Clang from the official APT repository
 wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - 
-add-apt-repository 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main'
+add-apt-repository 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-11 main'
 apt-get update
-apt-get install clang-9 libclang-9-dev llvm-9 llvm-9-dev
+apt-get install clang-11 libclang-11-dev llvm-11 llvm-11-dev \
+  libclang-cpp11 libclang-cpp11-dev
 
 # Get POCL sources
-export POCL_VER=1.5 # latest stable version
+export POCL_VER=1.6 # latest stable version
 curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" > pocl-$POCL_VER.tar.gz
 tar xf "pocl-$POCL_VER.tar.gz"
 # Build POCL from the sources
 cd pocl-$POCL_VER
 mkdir build && cd build
-cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-9 -DCMAKE_INSTALL_PREFIX=/usr ..
+cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-11 -DCMAKE_INSTALL_PREFIX=/usr ..
 make
 
 # Verify installation

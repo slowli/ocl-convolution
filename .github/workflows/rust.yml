@@ -8,11 +8,11 @@ on:
 
 env:
   # Minimum supported Rust version.
-  msrv: 1.49.0
+  msrv: 1.57.0
   # Nightly Rust toolchain for building docs.
-  nightly: nightly-2021-04-14
+  nightly: nightly-2022-05-21
   # POCL version (see at https://github.com/pocl/pocl)
-  pocl: 3.0
+  pocl: "3.0"
   # LLVM version for building POCL (see POCL docs)
   llvm: 14
 
@@ -72,7 +72,7 @@ jobs:
 
   # Checks minimum supported Rust version.
   build-msrv:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v2
@@ -120,7 +120,7 @@ jobs:
       - build
       - build-msrv
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v2

@@ -200,11 +200,7 @@ impl<T: ConvElement> Base<Filters<T>> {
             size: self.size,
             params: self.params,
             kernel: self.kernel,
-            buffers: Pinned {
-                filters: self.buffers,
-                io,
-                signal_shape,
-            },
+            buffers: Pinned { io, signal_shape },
             context: self.context,
         })
     }

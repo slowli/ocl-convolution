@@ -34,32 +34,8 @@ For quick testing, one may use [POCL](https://github.com/pocl/pocl); it is open 
 and not tied to hardware (at the cost of being CPU-based, i.e., orders of magnitude
 slower than OpenCL implementations by GPU vendors).
 POCL [can be installed from sources](http://portablecl.org/docs/html/install.html)
-with the commands like these (showcased for Ubuntu Bionic):
-
-```bash
-# Install utils for build
-apt-get install build-essential cmake pkg-config libhwloc-dev zlib1g-dev
-# Install OpenCL-related utils
-apt-get install ocl-icd-libopencl1 ocl-icd-dev ocl-icd-opencl-dev clinfo
-# Install LLVM / Clang
-apt-get install clang-11 libclang-11-dev llvm-11 llvm-11-dev \
-  libclang-cpp11 libclang-cpp11-dev
-
-# Get POCL sources
-export POCL_VER=1.6 # latest stable version
-curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" \
-  > pocl-$POCL_VER.tar.gz
-tar xf "pocl-$POCL_VER.tar.gz"
-# Build POCL from the sources
-cd pocl-$POCL_VER
-mkdir build && cd build
-cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-11 -DCMAKE_INSTALL_PREFIX=/usr ..
-make && make install
-
-# Verify installation
-clinfo
-# If successful, `clinfo` should display information about the POCL platform.
-```
+with the commands like in the [installation script](install-pocl.sh)
+(tested on Ubuntu 22.04).
 
 ## License
 

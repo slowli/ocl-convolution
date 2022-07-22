@@ -1,8 +1,8 @@
 # OpenCL-accelerated 2D convolutions for Rust
 
 [![Build Status](https://github.com/slowli/ocl-convolution/workflows/Rust/badge.svg?branch=master)](https://github.com/slowli/ocl-convolution/actions) 
-[![License: Apache-2.0](https://img.shields.io/github/license/slowli/ocl-convolution.svg)](https://github.com/slowli/ocl-convolution/blob/master/LICENSE)
-![rust 1.49.0+ required](https://img.shields.io/badge/rust-1.49.0+-blue.svg?label=Required%20Rust) 
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%2FApache--2.0-blue)](https://github.com/slowli/ocl-convolution#license)
+![rust 1.57+ required](https://img.shields.io/badge/rust-1.57+-blue.svg?label=Required%20Rust) 
 
 **Documentation:** [![Docs.rs](https://docs.rs/ocl-convolution/badge.svg)](https://docs.rs/ocl-convolution/)
 [![crate docs (master)](https://img.shields.io/badge/master-yellow.svg?label=docs)](https://slowli.github.io/ocl-convolution/ocl_convolution/) 
@@ -25,7 +25,40 @@ Add this to your `Crate.toml`:
 ocl-convolution = "0.2.0"
 ``` 
 
-See crate docs for the examples of usage.
+Basic floating-point convolution can be implemented as follows:
+
+```rust
+use ndarray::Array4;
+use rand::{Rng, thread_rng};
+use ocl_convolution::{Convolution, FeatureMap, Params};
+
+let convolution = Convolution::f32(3)?.build(Params {
+    strides: [1, 1],
+    pads: [0; 4],
+    dilation: [1, 1],
+    groups: 1,
+})?;
+
+// Generate random signal with 6x6 spatial dims and 3 channels.
+let mut rng = thread_rng();
+let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-1.0..=1.0));
+// Construct two 3x3 spatial filters.
+let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-1.0..=1.0));
+// Perform the convolution. The output must have 4x4 spatial dims
+// and contain 2 channels (1 per each filter). The output layout will
+// be the same as in the signal.
+let output = convolution.compute(
+    // `FeatureMap` wraps `ArrayView4` with information about
+    // memory layout (which is "channels-last" / NHWC in this case).
+    FeatureMap::nhwc(&signal),
+    &filters,
+)?;
+assert_eq!(output.shape(), [1, 4, 4, 2]);
+
+Ok::<_, ocl::Error>(())
+```
+
+See crate docs for more examples of usage.
 
 ### Installing OpenCL
 
@@ -34,36 +67,17 @@ For quick testing, one may use [POCL](https://github.com/pocl/pocl); it is open 
 and not tied to hardware (at the cost of being CPU-based, i.e., orders of magnitude
 slower than OpenCL implementations by GPU vendors).
 POCL [can be installed from sources](http://portablecl.org/docs/html/install.html)
-with the commands like these (showcased for Ubuntu Bionic):
-
-```bash
-# Install utils for build
-apt-get install build-essential cmake pkg-config libhwloc-dev zlib1g-dev
-# Install OpenCL-related utils
-apt-get install ocl-icd-libopencl1 ocl-icd-dev ocl-icd-opencl-dev clinfo
-# Install LLVM / Clang
-apt-get install clang-11 libclang-11-dev llvm-11 llvm-11-dev \
-  libclang-cpp11 libclang-cpp11-dev
-
-# Get POCL sources
-export POCL_VER=1.6 # latest stable version
-curl -sSL "https://github.com/pocl/pocl/archive/v$POCL_VER.tar.gz" \
-  > pocl-$POCL_VER.tar.gz
-tar xf "pocl-$POCL_VER.tar.gz"
-# Build POCL from the sources
-cd pocl-$POCL_VER
-mkdir build && cd build
-cmake -DWITH_LLVM_CONFIG=/usr/bin/llvm-config-11 -DCMAKE_INSTALL_PREFIX=/usr ..
-make && make install
-
-# Verify installation
-clinfo
-# If successful, `clinfo` should display information about the POCL platform.
-```
+with the commands like in the [installation script](install-pocl.sh)
+(tested on Ubuntu 22.04).
 
 ## License
 
-Licensed under [the Apache 2.0 license](LICENSE).
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE)
+or [MIT license](LICENSE-MIT) at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in `ocl-convolution` by you, as defined in the Apache-2.0 license,
+shall be dual licensed as above, without any additional terms or conditions.
 
 [convolutions]: https://en.wikipedia.org/wiki/Convolution
 [opencl]: https://www.khronos.org/opencl/

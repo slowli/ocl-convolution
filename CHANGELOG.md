@@ -13,6 +13,8 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 ### Changed
 
 - Update dependencies.
+- Bump minimum supported Rust version and switch to 2021 Rust edition.
+- Re-license the project under dual MIT / Apache-2.0 license.
 
 ### Removed
 

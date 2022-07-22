@@ -155,13 +155,13 @@ pub trait ConvElement: OclPrm + Copy + 'static {
 impl ConvElement for f32 {
     type Acc = f32;
     type Params = Params;
-    type ClParams = crate::params::ClParams;
+    type ClParams = params::ClParams;
 }
 
 impl ConvElement for i8 {
     type Acc = i32;
     type Params = I8Params;
-    type ClParams = crate::params::ClI8Params;
+    type ClParams = params::ClI8Params;
 }
 
 impl ConvolutionBuilder<f32> {
@@ -445,3 +445,6 @@ impl<T: ConvElement> PinnedConvolution<T> {
         self.0.compute(signal)
     }
 }
+
+#[cfg(doctest)]
+doc_comment::doctest!("../README.md");

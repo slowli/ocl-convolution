@@ -45,7 +45,6 @@ impl FeatureMapShape {
         }
     }
 
-    // `unwrap()` is safe: we've converted from `usize` previously.
     fn buffer_len(self) -> usize {
         self.batch_size as usize
             * self.width as usize
@@ -183,7 +182,7 @@ impl<T: ConvElement> Filters<T> {
         }
 
         let filters_slice = filters.as_slice().map_or_else(
-            || Cow::Owned(filters.iter().cloned().collect()),
+            || Cow::Owned(filters.iter().copied().collect()),
             Cow::Borrowed,
         );
         let filters_buffer = Buffer::builder()
@@ -232,7 +231,6 @@ impl<T: ConvElement> Filters<T> {
 pub(crate) struct InputAndOutput<T: ConvElement> {
     signal_buffer: Buffer<T>,
     signal_dims: Uint3,
-    batch_size: u32,
     output_buffer: Buffer<T>,
     output_shape: FeatureMapShape,
 }
@@ -279,7 +277,6 @@ impl<T: ConvElement> InputAndOutput<T> {
         Ok(InputAndOutput {
             signal_buffer,
             signal_dims,
-            batch_size: signal_shape.batch_size,
             output_buffer,
             output_shape,
         })
@@ -288,7 +285,7 @@ impl<T: ConvElement> InputAndOutput<T> {
     pub fn write_signal(&self, signal: FeatureMap<'_, T>) -> ocl::Result<()> {
         let signal = signal.to_nhwc();
         let signal_slice = signal.as_slice().map_or_else(
-            || Cow::Owned(signal.iter().cloned().collect()),
+            || Cow::Owned(signal.iter().copied().collect()),
             Cow::Borrowed,
         );
         self.signal_buffer.write(signal_slice.as_ref()).enq()
@@ -330,7 +327,6 @@ impl<T: ConvElement> InputAndOutput<T> {
 /// Container for convolution filters (with optional filter biases), signal and output.
 #[derive(Debug, Clone)]
 pub(crate) struct Pinned<T: ConvElement> {
-    pub filters: Filters<T>,
     pub io: InputAndOutput<T>,
     pub signal_shape: FeatureMapShape,
 }

@@ -2,7 +2,8 @@
 
 use ndarray::{Array4, Axis};
 use rand::{thread_rng, Rng};
-use std::{f32, fmt};
+
+use std::fmt;
 
 use ocl_convolution::{Convolution, FeatureMap, FeatureMapShape, I8Params, Params};
 

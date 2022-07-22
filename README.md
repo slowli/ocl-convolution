@@ -25,7 +25,40 @@ Add this to your `Crate.toml`:
 ocl-convolution = "0.2.0"
 ``` 
 
-See crate docs for the examples of usage.
+Basic floating-point convolution can be implemented as follows:
+
+```rust
+use ndarray::Array4;
+use rand::{Rng, thread_rng};
+use ocl_convolution::{Convolution, FeatureMap, Params};
+
+let convolution = Convolution::f32(3)?.build(Params {
+    strides: [1, 1],
+    pads: [0; 4],
+    dilation: [1, 1],
+    groups: 1,
+})?;
+
+// Generate random signal with 6x6 spatial dims and 3 channels.
+let mut rng = thread_rng();
+let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-1.0..=1.0));
+// Construct two 3x3 spatial filters.
+let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-1.0..=1.0));
+// Perform the convolution. The output must have 4x4 spatial dims
+// and contain 2 channels (1 per each filter). The output layout will
+// be the same as in the signal.
+let output = convolution.compute(
+    // `FeatureMap` wraps `ArrayView4` with information about
+    // memory layout (which is "channels-last" / NHWC in this case).
+    FeatureMap::nhwc(&signal),
+    &filters,
+)?;
+assert_eq!(output.shape(), [1, 4, 4, 2]);
+
+Ok::<_, ocl::Error>(())
+```
+
+See crate docs for more examples of usage.
 
 ### Installing OpenCL
 

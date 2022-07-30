@@ -111,7 +111,7 @@
 //! # }
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/ocl-convolution/0.2.0")]
+#![doc(html_root_url = "https://docs.rs/ocl-convolution/0.3.0")]
 #![warn(missing_debug_implementations, missing_docs, bare_trait_objects)]
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(

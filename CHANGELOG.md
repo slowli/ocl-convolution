@@ -5,9 +5,11 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+## 0.3.0 - 2022-07-30
+
 ### Fixed
 
-- Change dimension parameter types to `u32` to avoid potential runtime errors / UB
+- Change dimension parameter types to `u32` to avoid potential runtime errors / undefined behavior
   when converting from `usize`.
 
 ### Changed

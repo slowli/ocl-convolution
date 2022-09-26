@@ -42,7 +42,7 @@ impl Default for Params {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct ClParams {
     strides: Uint2,
@@ -112,7 +112,7 @@ impl I8Params {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct ClI8Params {
     strides: Uint2,

@@ -5,6 +5,10 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Changed
+
+- Bump minimum supported Rust version to 1.59.
+
 ## 0.3.0 - 2022-07-30
 
 ### Fixed
@@ -15,7 +19,7 @@ The project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 ### Changed
 
 - Update dependencies.
-- Bump minimum supported Rust version and switch to 2021 Rust edition.
+- Bump minimum supported Rust version to 1.57 and switch to 2021 Rust edition.
 - Re-license the project under dual MIT / Apache-2.0 license.
 
 ### Removed

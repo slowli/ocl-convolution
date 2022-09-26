@@ -88,7 +88,7 @@ pub enum Layout {
 ///
 /// Internally, a `FeatureMap` is a thin wrapper around [`ArrayView`](ndarray::ArrayView)
 /// that additionally indicates the memory layout of the map.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FeatureMap<'a, T> {
     layout: Layout,
     inner: ArrayView4<'a, T>,

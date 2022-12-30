@@ -96,7 +96,7 @@ fn run_batched_convolution(bencher: &mut Bencher<'_>, channels: usize, sequentia
                 .map(|i| {
                     let sample_signal = signal.index_axis(Axis(0), i).insert_axis(Axis(0));
                     convolution
-                        .compute(FeatureMap::nhwc(&sample_signal))
+                        .compute(FeatureMap::nhwc(sample_signal))
                         .unwrap()
                 })
                 .collect::<Vec<_>>()

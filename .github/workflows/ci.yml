@@ -1,4 +1,4 @@
-name: Rust
+name: CI
 
 on:
   push:
@@ -10,9 +10,9 @@ env:
   # Minimum supported Rust version.
   msrv: 1.59.0
   # Nightly Rust toolchain for building docs.
-  nightly: nightly-2022-05-21
+  nightly: nightly-2022-11-24
   # POCL version (see at https://github.com/pocl/pocl)
-  pocl: "3.0"
+  pocl: "3.1"
   # LLVM version for building POCL (see POCL docs)
   llvm: 14
 
@@ -21,10 +21,10 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Cache POCL binaries
-        uses: actions/cache@v1
+        uses: actions/cache@v3
         with:
           path: /tmp/pocl-${{ env.pocl }}
           key: ${{ runner.os }}-pocl-${{ env.pocl }}
@@ -35,18 +35,23 @@ jobs:
           LLVM_VER=${{ env.llvm }} \
           CMAKE_FLAGS=-DLLC_HOST_CPU=x86-64 ./install-pocl.sh
 
-      - name: Cache cargo build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target
-
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
           components: rustfmt,clippy
+      - name: Generate lockfile
+        uses: actions-rs/cargo@v1
+        with:
+          command: generate-lockfile
+
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo
 
       - name: Format
         uses: actions-rs/cargo@v1
@@ -75,11 +80,11 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       # We intentionally reuse the same cache as for the `build` job.
       - name: Cache POCL binaries
-        uses: actions/cache@v1
+        uses: actions/cache@v3
         with:
           path: /tmp/pocl-${{ env.pocl }}
           key: ${{ runner.os }}-pocl-${{ env.pocl }}
@@ -90,18 +95,23 @@ jobs:
           LLVM_VER=${{ env.llvm }} \
           CMAKE_FLAGS=-DLLC_HOST_CPU=x86-64 ./install-pocl.sh
 
-      - name: Cache cargo build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: ${{ runner.os }}-msrv-cargo-build-target
-
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.msrv }}
           override: true
           profile: minimal
+      - name: Generate lockfile
+        uses: actions-rs/cargo@v1
+        with:
+          command: generate-lockfile
+
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-msrv-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-msrv-cargo
 
       - name: Run tests
         uses: actions-rs/cargo@v1
@@ -123,15 +133,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v2
-        with:
-          persist-credentials: false
-
-      - name: Cache cargo build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: ${{ runner.os }}-docs-cargo-build-target
+      - uses: actions/checkout@v3
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
@@ -139,6 +141,17 @@ jobs:
           toolchain: ${{ env.nightly }}
           profile: minimal
           override: true
+      - name: Generate lockfile
+        uses: actions-rs/cargo@v1
+        with:
+          command: generate-lockfile
+
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-docs-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-docs-cargo
 
       - name: Build docs
         run: |
@@ -152,9 +165,8 @@ jobs:
         run: cp misc/docroot.html target/doc/index.html
 
       - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@releases/v3
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-          BRANCH: gh-pages
-          FOLDER: target/doc
-          SINGLE_COMMIT: true
+          branch: gh-pages
+          folder: target/doc
+          single-commit: true

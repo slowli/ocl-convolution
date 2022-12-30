@@ -3,7 +3,7 @@
 use ndarray::{Array1, Array3, Array4, ArrayView3, ArrayView4, Axis, LinalgScalar};
 use rand::{thread_rng, Rng};
 
-use std::{cmp, ops};
+use std::ops;
 
 use ocl_convolution::{Convolution, FeatureMap, I8Params, Params};
 
@@ -92,10 +92,7 @@ fn compare_f32_convolution(signal_dims: [usize; 3], filter_dims: [usize; 4], par
     let max_diff = diff.fold(0.0, |acc, &val| if val > acc { val } else { acc });
     assert!(
         max_diff < 1e-4,
-        "signal={:?}, filter={}, params={:?}",
-        signal,
-        filter,
-        params
+        "signal={signal:?}, filter={filter}, params={params:?}"
     );
 }
 
@@ -261,7 +258,7 @@ fn downscale(x: i32, shift: i32) -> i8 {
     if remainder > threshold || (remainder == threshold && downscaled & 1 == 1) {
         downscaled += 1;
     }
-    cmp::max(-128, cmp::min(127, downscaled)) as i8
+    downscaled.clamp(-128, 127) as i8
 }
 
 fn compare_i8_convolution(signal_dims: [usize; 3], filter_dims: [usize; 4], params: Params) {
@@ -299,7 +296,7 @@ fn compare_i8_convolution(signal_dims: [usize; 3], filter_dims: [usize; 4], para
             .filter_map(|(i, &x)| if x != 0 { Some(i) } else { None })
             .next()
             .unwrap();
-        panic!("cl={}, cpu={}, index={:?}", cl_output, cpu_output, index);
+        panic!("cl={cl_output}, cpu={cpu_output}, index={index:?}");
     }
 }
 

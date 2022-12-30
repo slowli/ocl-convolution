@@ -589,9 +589,7 @@ fn f32_batching() -> Result<(), Error> {
             .fold(0.0, |acc, &x| if x > acc { x } else { acc });
         assert!(
             max_diff < f32::EPSILON,
-            "batched={}, stitched={}",
-            batched_output,
-            stitched_output
+            "batched={batched_output}, stitched={stitched_output}"
         );
     }
     Ok(())

@@ -62,7 +62,7 @@ impl<T: ConvElement> ConvolutionBuilder<T> {
 
         let context = Context::builder()
             .platform(platform)
-            .devices(&device)
+            .devices(device)
             .build()?;
         let program = ProQue::new(
             context.clone(),

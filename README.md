@@ -1,6 +1,6 @@
 # OpenCL-accelerated 2D convolutions for Rust
 
-[![Build Status](https://github.com/slowli/ocl-convolution/workflows/Rust/badge.svg?branch=master)](https://github.com/slowli/ocl-convolution/actions) 
+[![Build Status](https://github.com/slowli/ocl-convolution/workflows/CI/badge.svg?branch=master)](https://github.com/slowli/ocl-convolution/actions) 
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%2FApache--2.0-blue)](https://github.com/slowli/ocl-convolution#license)
 ![rust 1.59+ required](https://img.shields.io/badge/rust-1.59+-blue.svg?label=Required%20Rust) 
 

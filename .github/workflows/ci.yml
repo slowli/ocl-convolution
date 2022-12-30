@@ -12,7 +12,7 @@ env:
   # Nightly Rust toolchain for building docs.
   nightly: nightly-2022-11-24
   # POCL version (see at https://github.com/pocl/pocl)
-  pocl: "3.0"
+  pocl: "3.1"
   # LLVM version for building POCL (see POCL docs)
   llvm: 14
 

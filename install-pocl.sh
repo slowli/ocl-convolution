@@ -5,7 +5,7 @@
 set -ex
 
 LLVM_VER=${LLVM_VER:-14}
-POCL_VER=${POCL_VER:-3.0}
+POCL_VER=${POCL_VER:-3.1}
 POCL_BUILD_DIR=${POCL_BUILD_DIR:-/tmp}
 
 echo "Building POCL $POCL_VER with LLVM $LLVM_VER in $POCL_BUILD_DIR..."

@@ -1,4 +1,3 @@
-use lazy_static::lazy_static;
 use ndarray::{Array4, ArrayView4};
 use ocl::{
     builders::KernelBuilder, prm::Uint3, Buffer, Context, Device, Kernel, Platform, ProQue,
@@ -32,6 +31,11 @@ impl<T: ConvElement> ConvolutionBuilder<T> {
         defines: &[(&'static str, i32)],
         source: &str,
     ) -> ocl::Result<Self> {
+        // For some reason, certain OpenCL implementations (e.g., POCL) do not work well
+        // when the list of devices for a platform is queried from multiple threads.
+        // Hence, we introduce a `Mutex` to serialize these calls.
+        static MUTEX: Mutex<()> = Mutex::new(());
+
         assert_eq!(
             filter_size % 2,
             1,
@@ -48,12 +52,6 @@ impl<T: ConvElement> ConvolutionBuilder<T> {
         }
         program_builder.source(source);
 
-        // For some reason, certain OpenCL implementations (e.g., POCL) do not work well
-        // when the list of devices for a platform is queried from multiple threads.
-        // Hence, we introduce a `Mutex` to serialize these calls.
-        lazy_static! {
-            static ref MUTEX: Mutex<()> = Mutex::new(());
-        }
         let (platform, device) = {
             let _lock = MUTEX.lock().ok();
             let platform = Platform::first()?;

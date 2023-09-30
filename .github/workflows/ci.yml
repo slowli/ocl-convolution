@@ -10,9 +10,9 @@ env:
   # Minimum supported Rust version.
   msrv: 1.65.0
   # Nightly Rust toolchain for building docs.
-  nightly: nightly-2023-05-07
+  nightly: nightly-2023-09-09
   # POCL version (see at https://github.com/pocl/pocl)
-  pocl: "3.1"
+  pocl: "4.0"
   # LLVM version for building POCL (see POCL docs)
   llvm: 14
 

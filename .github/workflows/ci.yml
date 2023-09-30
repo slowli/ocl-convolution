@@ -97,10 +97,8 @@ jobs:
           key: ${{ runner.os }}-msrv-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-msrv-cargo
 
-      - name: Run tests
-        run: cargo test --workspace --all-features --all-targets
-      - name: Run doc tests
-        run: cargo test --workspace --doc
+      - name: Build library
+        run: cargo build -p ocl-convolution --lib --all-features
 
   # Building docs does not require an OpenCL libraries or implementation.
   document:

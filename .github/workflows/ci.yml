@@ -40,6 +40,11 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt,clippy
+      - name: Install cargo-deny
+        uses: baptiste0928/cargo-install@v2
+        with:
+          crate: cargo-deny
+          version: "^0.14"
 
       - name: Cache cargo build
         uses: actions/cache@v3
@@ -52,6 +57,8 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Clippy
         run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+      - name: Check dependencies
+        run: cargo deny --workspace check
 
       - name: Run tests
         run: cargo test --workspace --all-features --all-targets

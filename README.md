@@ -70,6 +70,11 @@ POCL [can be installed from sources](http://portablecl.org/docs/html/install.htm
 with the commands like in the [installation script](install-pocl.sh)
 (tested on Ubuntu 22.04).
 
+## Contributing
+
+All contributions are welcome! See [the contributing guide](CONTRIBUTING.md) to help
+you get involved.
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE)

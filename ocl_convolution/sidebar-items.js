@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Layout"],"struct":["Convolution","ConvolutionBuilder","FeatureMap","FeatureMapShape","FiltersConvolution","I8Params","Params","PinnedConvolution"],"trait":["ConvElement"]};

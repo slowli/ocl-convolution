@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Script to install POCL (https://github.com/pocl/pocl).
+# Script to install POCL (https://github.com/pocl/pocl) on a Debian-like OS.
 
 set -ex
 
-LLVM_VER=${LLVM_VER:-14}
-POCL_VER=${POCL_VER:-4.0}
+LLVM_VER=${LLVM_VER:-18}
+POCL_VER=${POCL_VER:-7.0}
 POCL_BUILD_DIR=${POCL_BUILD_DIR:-/tmp}
 
 echo "Building POCL $POCL_VER with LLVM $LLVM_VER in $POCL_BUILD_DIR..."

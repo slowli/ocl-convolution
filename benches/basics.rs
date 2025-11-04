@@ -1,9 +1,8 @@
 use criterion::{criterion_group, criterion_main, Bencher, BenchmarkId, Criterion};
 use ndarray::{Array4, Axis};
+use ocl_convolution::{Convolution, FeatureMap, FeatureMapShape, I8Params, Params};
 use rand::{Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
-
-use ocl_convolution::{Convolution, FeatureMap, FeatureMapShape, I8Params, Params};
 
 const INPUT_SIZE: usize = 28;
 const CHANNELS: &[usize] = &[8, 16, 32, 64, 128, 256];

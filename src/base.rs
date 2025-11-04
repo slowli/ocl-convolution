@@ -1,10 +1,10 @@
+use std::{convert::TryFrom, marker::PhantomData, sync::Mutex};
+
 use ndarray::{Array4, ArrayView4};
 use ocl::{
     builders::KernelBuilder, prm::Uint3, Buffer, Context, Device, Kernel, Platform, ProQue,
     Program, Queue,
 };
-
-use std::{convert::TryFrom, marker::PhantomData, sync::Mutex};
 
 use crate::{
     buffers::{FeatureMap, FeatureMapShape, Filters, InputAndOutput, Pinned},

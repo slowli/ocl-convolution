@@ -121,14 +121,10 @@
     clippy::doc_markdown
 )]
 
-use ndarray::{Array4, ArrayView4};
-use ocl::OclPrm;
-
 use std::{fmt, marker::PhantomData};
 
-mod base;
-mod buffers;
-mod params;
+use ndarray::{Array4, ArrayView4};
+use ocl::OclPrm;
 
 use crate::{
     base::Base,
@@ -139,6 +135,10 @@ pub use crate::{
     buffers::{FeatureMap, FeatureMapShape, Layout},
     params::{I8Params, Params},
 };
+
+mod base;
+mod buffers;
+mod params;
 
 const SOURCE: &str = include_str!(concat!(env!("OUT_DIR"), "/conv.cl"));
 

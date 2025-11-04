@@ -1,9 +1,9 @@
 //! OpenCL buffer wrappers.
 
+use std::{borrow::Cow, convert::TryFrom};
+
 use ndarray::{Array4, ArrayView4};
 use ocl::{flags, prm::Uint3, Buffer, Kernel};
-
-use std::{borrow::Cow, convert::TryFrom};
 
 use crate::{
     base::Base,

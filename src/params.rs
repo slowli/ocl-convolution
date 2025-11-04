@@ -1,11 +1,11 @@
 //! Convolution parameters.
 
+use std::marker::PhantomData;
+
 use ocl::{
     prm::{Uint2, Uint4},
     OclPrm,
 };
-
-use std::marker::PhantomData;
 
 use crate::{
     buffers::{Filters, Layout, Pinned},

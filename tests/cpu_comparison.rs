@@ -1,11 +1,10 @@
 //! Comparison with the CPU convolution implementation.
 
-use ndarray::{Array1, Array3, Array4, ArrayView3, ArrayView4, Axis, LinalgScalar};
-use rand::Rng;
-
 use std::ops;
 
+use ndarray::{Array1, Array3, Array4, ArrayView3, ArrayView4, Axis, LinalgScalar};
 use ocl_convolution::{Convolution, FeatureMap, I8Params, Params};
+use rand::Rng;
 
 fn slow_compute<T: LinalgScalar + ops::AddAssign>(
     signal: ArrayView3<'_, T>,

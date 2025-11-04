@@ -1,6 +1,6 @@
 # OpenCL-accelerated 2D convolutions for Rust
 
-[![Build Status](https://github.com/slowli/ocl-convolution/workflows/CI/badge.svg?branch=master)](https://github.com/slowli/ocl-convolution/actions) 
+[![Build status](https://github.com/slowli/ocl-convolution/actions/workflows/ci.yml/badge.svg)](https://github.com/slowli/ocl-convolution/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%2FApache--2.0-blue)](https://github.com/slowli/ocl-convolution#license)
 ![rust 1.75+ required](https://img.shields.io/badge/rust-1.75+-blue.svg?label=Required%20Rust) 
 
@@ -22,7 +22,7 @@ Add this to your `Crate.toml`:
 
 ```toml
 [dependencies]
-ocl-convolution = "0.3.0"
+ocl-convolution = "0.4.0"
 ``` 
 
 Basic floating-point convolution can be implemented as follows:

@@ -535,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "ocl-convolution"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "doc-comment",

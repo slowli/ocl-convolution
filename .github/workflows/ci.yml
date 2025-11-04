@@ -41,10 +41,10 @@ jobs:
           toolchain: stable
           components: rustfmt,clippy
       - name: Install cargo-deny
-        uses: baptiste0928/cargo-install@v2
+        uses: baptiste0928/cargo-install@v3
         with:
           crate: cargo-deny
-          version: "^0.14"
+          version: "^0.18.5"
 
       - name: Cache cargo build
         uses: actions/cache@v3

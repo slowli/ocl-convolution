@@ -153,7 +153,7 @@ impl<T: ConvElement> Base<PhantomData<T>> {
 
     pub fn with_filters(
         self,
-        filters: ArrayView4<'_, T>,
+        filters: &ArrayView4<'_, T>,
         filter_biases: Option<&[T::Acc]>,
     ) -> ocl::Result<Base<Filters<T>>> {
         let filters = Filters::new(filters, filter_biases, &self)?;
@@ -169,7 +169,7 @@ impl<T: ConvElement> Base<PhantomData<T>> {
     pub fn compute(
         &self,
         signal: FeatureMap<'_, T>,
-        filters: ArrayView4<'_, T>,
+        filters: &ArrayView4<'_, T>,
         filter_biases: Option<&[T::Acc]>,
     ) -> ocl::Result<Array4<T>> {
         let filter_channels =

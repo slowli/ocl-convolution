@@ -161,7 +161,7 @@ impl<T: ConvElement> Filters<T> {
     }
 
     pub fn new<U: WithParams>(
-        filters: ArrayView4<'_, T>,
+        filters: &ArrayView4<'_, T>,
         biases: Option<&[T::Acc]>,
         conv: &Base<U>,
     ) -> ocl::Result<Self> {

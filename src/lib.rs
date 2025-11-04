@@ -37,7 +37,7 @@
 //!
 //! ```
 //! use ndarray::Array4;
-//! use rand::{Rng, thread_rng};
+//! use rand::Rng;
 //! use ocl_convolution::{Convolution, FeatureMap, Params};
 //!
 //! # fn main() -> Result<(), ocl::Error> {
@@ -49,10 +49,10 @@
 //! })?;
 //!
 //! // Generate random signal with 6x6 spatial dims and 3 channels.
-//! let mut rng = thread_rng();
-//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-1.0..=1.0));
+//! let mut rng = rand::rng();
+//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.random_range(-1.0..=1.0));
 //! // Construct two 3x3 spatial filters.
-//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-1.0..=1.0));
+//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.random_range(-1.0..=1.0));
 //! // Perform the convolution. The output must have 4x4 spatial dims
 //! // and contain 2 channels (1 per each filter). The output layout will
 //! // be the same as in the signal.
@@ -78,7 +78,7 @@
 //!
 //! ```
 //! use ndarray::Array4;
-//! use rand::{Rng, thread_rng};
+//! use rand::Rng;
 //! use ocl_convolution::{Convolution, I8Params, FeatureMap, Params};
 //!
 //! # fn main() -> Result<(), ocl::Error> {
@@ -96,10 +96,10 @@
 //! let convolution = Convolution::i8(3)?.build(params)?;
 //!
 //! // Generate random signal with 6x6 spatial dims and 3 channels.
-//! let mut rng = thread_rng();
-//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-127..=127));
+//! let mut rng = rand::rng();
+//! let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.random_range(-127..=127));
 //! // Construct two 3x3 spatial filters.
-//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-127..=127));
+//! let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.random_range(-127..=127));
 //! // Perform the convolution. The output must have 4x4 spatial dims
 //! // and contain 2 channels (1 per each filter).
 //! let output = convolution.compute(
@@ -298,7 +298,7 @@ impl<T: ConvElement> Convolution<T> {
         filters: impl Into<ArrayView4<'a, T>>,
     ) -> ocl::Result<FiltersConvolution<T>> {
         self.0
-            .with_filters(filters.into(), None)
+            .with_filters(&filters.into(), None)
             .map(FiltersConvolution)
     }
 
@@ -309,7 +309,7 @@ impl<T: ConvElement> Convolution<T> {
         filter_biases: &[T::Acc],
     ) -> ocl::Result<FiltersConvolution<T>> {
         self.0
-            .with_filters(filters.into(), Some(filter_biases))
+            .with_filters(&filters.into(), Some(filter_biases))
             .map(FiltersConvolution)
     }
 
@@ -335,7 +335,7 @@ impl<T: ConvElement> Convolution<T> {
         signal: FeatureMap<'_, T>,
         filters: impl Into<ArrayView4<'a, T>>,
     ) -> ocl::Result<Array4<T>> {
-        self.0.compute(signal, filters.into(), None)
+        self.0.compute(signal, &filters.into(), None)
     }
 
     /// Performs convolution on the provided `signal` and `filters`, with the output offset
@@ -348,7 +348,7 @@ impl<T: ConvElement> Convolution<T> {
         filters: impl Into<ArrayView4<'a, T>>,
         filter_biases: &[T::Acc],
     ) -> ocl::Result<Array4<T>> {
-        self.0.compute(signal, filters.into(), Some(filter_biases))
+        self.0.compute(signal, &filters.into(), Some(filter_biases))
     }
 }
 

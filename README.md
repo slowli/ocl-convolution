@@ -22,7 +22,7 @@ Add this to your `Crate.toml`:
 
 ```toml
 [dependencies]
-ocl-convolution = "0.3.0"
+ocl-convolution = "0.4.0"
 ``` 
 
 Basic floating-point convolution can be implemented as follows:

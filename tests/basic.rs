@@ -1,7 +1,7 @@
 //! Tests for basic functionality provided by the crate.
 
 use ndarray::{Array4, Axis};
-use rand::{thread_rng, Rng};
+use rand::Rng;
 
 use std::fmt;
 
@@ -554,9 +554,9 @@ fn i8_convolution_with_filter_bias() -> Result<(), Error> {
 fn f32_batching() -> Result<(), Error> {
     use ndarray::{concatenate, s};
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let conv = Convolution::f32(3)?.build(Params::default())?;
-    let filters = Array4::from_shape_fn([2, 3, 3, 4], |_| rng.gen_range(-1.0..=1.0));
+    let filters = Array4::from_shape_fn([2, 3, 3, 4], |_| rng.random_range(-1.0..=1.0));
     let conv = conv.with_filters(&filters)?;
 
     for batch_size in 2..8 {
@@ -572,7 +572,7 @@ fn f32_batching() -> Result<(), Error> {
             FeatureMap::nchw
         };
 
-        let signal = Array4::from_shape_fn(signal_shape, |_| rng.gen_range(-1.0..=1.0));
+        let signal = Array4::from_shape_fn(signal_shape, |_| rng.random_range(-1.0..=1.0));
         let batched_output = conv.compute(to_map(signal.view()))?;
 
         let sample_outputs: Vec<_> = (0..batch_size)
@@ -581,7 +581,7 @@ fn f32_batching() -> Result<(), Error> {
                 conv.compute(to_map(sample_signal))
             })
             .collect::<Result<_, _>>()?;
-        let sample_outputs: Vec<_> = sample_outputs.iter().map(Array4::view).collect();
+        let sample_outputs: Vec<_> = sample_outputs.iter().map(|array| array.view()).collect();
         let stitched_output = concatenate(Axis(0), &sample_outputs)?;
 
         let max_diff = (batched_output.clone() - stitched_output.clone())

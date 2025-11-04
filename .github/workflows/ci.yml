@@ -8,17 +8,17 @@ on:
 
 env:
   # Minimum supported Rust version.
-  msrv: 1.65.0
+  msrv: 1.75.0
   # Nightly Rust toolchain for building docs.
-  nightly: nightly-2023-09-09
+  nightly: nightly-2025-11-02
   # POCL version (see at https://github.com/pocl/pocl)
-  pocl: "4.0"
+  pocl: "7.0"
   # LLVM version for building POCL (see POCL docs)
-  llvm: 14
+  llvm: 18
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v3
@@ -41,10 +41,10 @@ jobs:
           toolchain: stable
           components: rustfmt,clippy
       - name: Install cargo-deny
-        uses: baptiste0928/cargo-install@v2
+        uses: baptiste0928/cargo-install@v3
         with:
           crate: cargo-deny
-          version: "^0.14"
+          version: "^0.18.5"
 
       - name: Cache cargo build
         uses: actions/cache@v3
@@ -67,7 +67,7 @@ jobs:
 
   # Checks minimum supported Rust version.
   build-msrv:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v3
@@ -108,7 +108,7 @@ jobs:
     if: github.event_name == 'push'
     permissions:
       contents: write
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v3

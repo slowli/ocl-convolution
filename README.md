@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/slowli/ocl-convolution/workflows/CI/badge.svg?branch=master)](https://github.com/slowli/ocl-convolution/actions) 
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%2FApache--2.0-blue)](https://github.com/slowli/ocl-convolution#license)
-![rust 1.65+ required](https://img.shields.io/badge/rust-1.65+-blue.svg?label=Required%20Rust) 
+![rust 1.75+ required](https://img.shields.io/badge/rust-1.75+-blue.svg?label=Required%20Rust) 
 
 **Documentation:** [![Docs.rs](https://docs.rs/ocl-convolution/badge.svg)](https://docs.rs/ocl-convolution/)
 [![crate docs (master)](https://img.shields.io/badge/master-yellow.svg?label=docs)](https://slowli.github.io/ocl-convolution/ocl_convolution/) 
@@ -29,7 +29,7 @@ Basic floating-point convolution can be implemented as follows:
 
 ```rust
 use ndarray::Array4;
-use rand::{Rng, thread_rng};
+use rand::Rng;
 use ocl_convolution::{Convolution, FeatureMap, Params};
 
 let convolution = Convolution::f32(3)?.build(Params {
@@ -40,10 +40,10 @@ let convolution = Convolution::f32(3)?.build(Params {
 })?;
 
 // Generate random signal with 6x6 spatial dims and 3 channels.
-let mut rng = thread_rng();
-let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.gen_range(-1.0..=1.0));
+let mut rng = rand::rng();
+let signal = Array4::from_shape_fn([1, 6, 6, 3], |_| rng.random_range(-1.0..=1.0));
 // Construct two 3x3 spatial filters.
-let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.gen_range(-1.0..=1.0));
+let filters = Array4::from_shape_fn([2, 3, 3, 3], |_| rng.random_range(-1.0..=1.0));
 // Perform the convolution. The output must have 4x4 spatial dims
 // and contain 2 channels (1 per each filter). The output layout will
 // be the same as in the signal.

@@ -252,8 +252,8 @@ impl Convolution<f32> {
 /// 5. If there is filter bias `B` provided, apply bias to the output per each output channel:
 ///    `O[f, ..] := O[f, ..] + B[f]`.
 /// 6. Downscale the output: `O := round(O / 2**self.bit_shift)`,
-///   where `round()` works as floating-point rounding with the default mode
-///   (round to nearest, ties to even).
+///    where `round()` works as floating-point rounding with the default mode
+///    (round to nearest, ties to even).
 /// 7. Apply output bias: `O := O + params.output_bias`.
 /// 8. Saturate output to `i8` range.
 ///

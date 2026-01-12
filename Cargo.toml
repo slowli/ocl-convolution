@@ -21,7 +21,7 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 # Public dependencies (present in the public API).
-ndarray = "0.17.1"
+ndarray = "0.17.2"
 ocl = "0.19.7"
 
 [dev-dependencies]

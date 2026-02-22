@@ -1,3 +1,5 @@
+//! Benchmarks for basic operations.
+
 use criterion::{Bencher, BenchmarkId, Criterion, criterion_group, criterion_main};
 use ndarray::{Array4, Axis};
 use ocl_convolution::{Convolution, FeatureMap, FeatureMapShape, I8Params, Params};
@@ -59,9 +61,9 @@ fn run_convolution(bencher: &mut Bencher<'_>, channels: usize, memory: Memory) {
                 .unwrap()
                 .pin(FeatureMapShape {
                     batch_size: 1,
-                    width: INPUT_SIZE as u32,
-                    height: INPUT_SIZE as u32,
-                    channels: channels as u32,
+                    width: INPUT_SIZE.try_into().unwrap(),
+                    height: INPUT_SIZE.try_into().unwrap(),
+                    channels: channels.try_into().unwrap(),
                 })
                 .unwrap();
             bencher.iter(|| convolution.compute(signal).unwrap());
@@ -108,6 +110,7 @@ fn run_batched_convolution(bencher: &mut Bencher<'_>, channels: usize, sequentia
 fn run_i8_convolution(bencher: &mut Bencher<'_>, channels: usize, memory: Memory) {
     const BIT_SHIFT: u8 = 8;
 
+    #[allow(clippy::cast_precision_loss)] // doesn't happen in practice
     let scale = I8Params::convert_scale(BIT_SHIFT, (channels as f32).sqrt().recip());
     let params = I8Params {
         common: Params::default(),
@@ -134,7 +137,7 @@ fn run_i8_convolution(bencher: &mut Bencher<'_>, channels: usize, memory: Memory
         Memory::Simple => bencher.iter(|| convolution.compute(signal, &filters).unwrap()),
         Memory::Filters => {
             let convolution = convolution.with_filters(&filters).unwrap();
-            bencher.iter(|| convolution.compute(signal).unwrap())
+            bencher.iter(|| convolution.compute(signal).unwrap());
         }
         Memory::Pinned => {
             let convolution = convolution
@@ -142,12 +145,12 @@ fn run_i8_convolution(bencher: &mut Bencher<'_>, channels: usize, memory: Memory
                 .unwrap()
                 .pin(FeatureMapShape {
                     batch_size: 1,
-                    width: INPUT_SIZE as u32,
-                    height: INPUT_SIZE as u32,
-                    channels: channels as u32,
+                    width: INPUT_SIZE.try_into().unwrap(),
+                    height: INPUT_SIZE.try_into().unwrap(),
+                    channels: channels.try_into().unwrap(),
                 })
                 .unwrap();
-            bencher.iter(|| convolution.compute(signal).unwrap())
+            bencher.iter(|| convolution.compute(signal).unwrap());
         }
     }
 }

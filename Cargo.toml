@@ -31,6 +31,17 @@ rand = "0.10.0"
 rand_xorshift = "0.5.0"
 version-sync = "0.9.5"
 
+[lints.rust]
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+must_use_candidate = "allow"
+module_name_repetitions = "allow"
+
 [[bench]]
 name = "basics"
 harness = false

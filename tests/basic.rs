@@ -4,7 +4,7 @@ use std::fmt;
 
 use ndarray::{Array4, Axis};
 use ocl_convolution::{Convolution, FeatureMap, FeatureMapShape, I8Params, Params};
-use rand::Rng;
+use rand::RngExt;
 
 /// Simple wrapper for both error types used in tests.
 #[derive(Debug)]

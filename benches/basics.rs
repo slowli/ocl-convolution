@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Bencher, BenchmarkId, Criterion};
 use ndarray::{Array4, Axis};
 use ocl_convolution::{Convolution, FeatureMap, FeatureMapShape, I8Params, Params};
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use rand_xorshift::XorShiftRng;
 
 const INPUT_SIZE: usize = 28;

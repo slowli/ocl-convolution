@@ -2,14 +2,14 @@ use std::{convert::TryFrom, marker::PhantomData, sync::Mutex};
 
 use ndarray::{Array4, ArrayView4};
 use ocl::{
-    builders::KernelBuilder, prm::Uint3, Buffer, Context, Device, Kernel, Platform, ProQue,
-    Program, Queue,
+    Buffer, Context, Device, Kernel, Platform, ProQue, Program, Queue, builders::KernelBuilder,
+    prm::Uint3,
 };
 
 use crate::{
+    ConvElement,
     buffers::{FeatureMap, FeatureMapShape, Filters, InputAndOutput, Pinned},
     params::{OutputParams, Params, WithParams},
-    ConvElement,
 };
 
 /// Convolution builder. The same builder can be used to create multiple `Convolution`s

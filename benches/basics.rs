@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Bencher, BenchmarkId, Criterion};
+use criterion::{Bencher, BenchmarkId, Criterion, criterion_group, criterion_main};
 use ndarray::{Array4, Axis};
 use ocl_convolution::{Convolution, FeatureMap, FeatureMapShape, I8Params, Params};
 use rand::{RngExt, SeedableRng};

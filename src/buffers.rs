@@ -3,12 +3,12 @@
 use std::{borrow::Cow, convert::TryFrom};
 
 use ndarray::{Array4, ArrayView4};
-use ocl::{flags, prm::Uint3, Buffer, Kernel};
+use ocl::{Buffer, Kernel, flags, prm::Uint3};
 
 use crate::{
+    ConvElement, Params,
     base::Base,
     params::{OutputParams, WithParams},
-    ConvElement, Params,
 };
 
 /// Shape of a [`FeatureMap`].

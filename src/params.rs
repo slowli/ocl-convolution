@@ -3,13 +3,13 @@
 use std::marker::PhantomData;
 
 use ocl::{
-    prm::{Uint2, Uint4},
     OclPrm,
+    prm::{Uint2, Uint4},
 };
 
 use crate::{
-    buffers::{Filters, Layout, Pinned},
     ConvElement,
+    buffers::{Filters, Layout, Pinned},
 };
 
 /// General convolution parameters.

@@ -4,11 +4,11 @@ use std::ops;
 
 use ndarray::{Array1, Array3, Array4, ArrayView3, ArrayView4, Axis, LinalgScalar};
 use ocl_convolution::{Convolution, FeatureMap, I8Params, Params};
-use rand::Rng;
+use rand::RngExt;
 
 fn slow_compute<T: LinalgScalar + ops::AddAssign>(
-    signal: ArrayView3<'_, T>,
-    filters: ArrayView4<'_, T>,
+    signal: &ArrayView3<'_, T>,
+    filters: &ArrayView4<'_, T>,
     bias: Option<&[T]>,
     params: Params,
 ) -> Array3<T> {
@@ -26,15 +26,16 @@ fn slow_compute<T: LinalgScalar + ops::AddAssign>(
     let kernel_w = kernel_size + (dilation_y - 1) * (kernel_size - 1);
     let output_y =
         (input_w - kernel_w + params.pads[1] as usize + params.pads[3] as usize) / stride_y + 1;
-    let (input_ch, output_ch) = (filters.shape()[3] * groups, filters.shape()[0]);
-    let group_input_ch = input_ch / groups;
-    let group_output_ch = output_ch / groups;
+    let (input_channels, output_channels) = (filters.shape()[3] * groups, filters.shape()[0]);
+    let group_input_ch = input_channels / groups;
+    let group_output_ch = output_channels / groups;
 
-    let output = bias
-        .map(|bias| Array1::from(bias.to_vec()))
-        .unwrap_or_else(|| Array1::zeros([output_ch]));
+    let output = bias.map_or_else(
+        || Array1::zeros([output_channels]),
+        |bias| Array1::from(bias.to_vec()),
+    );
     let mut output = output
-        .broadcast([output_h, output_y, output_ch])
+        .broadcast([output_h, output_y, output_channels])
         .unwrap()
         .to_owned();
 
@@ -75,9 +76,9 @@ fn compare_f32_convolution(signal_dims: [usize; 3], filter_dims: [usize; 4], par
     let mut rng = rand::rng();
     let signal = Array3::from_shape_fn(signal_dims, |_| rng.random_range(-1.0..=1.0));
     let filter = Array4::from_shape_fn(filter_dims, |_| rng.random_range(-1.0..=1.0));
-    let cpu_output = slow_compute(signal.view(), filter.view(), None, params);
+    let cpu_output = slow_compute(&signal.view(), &filter.view(), None, params);
 
-    let convolution = Convolution::f32(filter_dims[1] as u32)
+    let convolution = Convolution::f32(filter_dims[1].try_into().unwrap())
         .unwrap()
         .build(params)
         .unwrap();
@@ -249,6 +250,7 @@ fn f32_dilated_convolution_medium() {
     test_dilated_f32_convolution(SIGNAL_DIMS, FILTER_DIMS, 2);
 }
 
+#[allow(clippy::cast_possible_truncation)] // doesn't happen due to clamping
 fn downscale(x: i32, shift: i32) -> i8 {
     let mask = (1 << shift) - 1;
     let threshold = 1 << (shift - 1);
@@ -257,6 +259,7 @@ fn downscale(x: i32, shift: i32) -> i8 {
     if remainder > threshold || (remainder == threshold && downscaled & 1 == 1) {
         downscaled += 1;
     }
+
     downscaled.clamp(-128, 127) as i8
 }
 
@@ -265,14 +268,14 @@ fn compare_i8_convolution(signal_dims: [usize; 3], filter_dims: [usize; 4], para
     let signal = Array3::from_shape_fn(signal_dims, |_| rng.random_range(-127_i8..=127));
     let filter = Array4::from_shape_fn(filter_dims, |_| rng.random_range(-127_i8..=127));
     let cpu_output = slow_compute(
-        signal.mapv(i32::from).view(),
-        filter.mapv(i32::from).view(),
+        &signal.mapv(i32::from).view(),
+        &filter.mapv(i32::from).view(),
         None,
         params,
     )
     .mapv(|x| downscale(x, 8));
 
-    let convolution = Convolution::i8(filter_dims[1] as u32)
+    let convolution = Convolution::i8(filter_dims[1].try_into().unwrap())
         .unwrap()
         .build(I8Params {
             common: params,
@@ -292,8 +295,7 @@ fn compare_i8_convolution(signal_dims: [usize; 3], filter_dims: [usize; 4], para
     if cl_output != cpu_output {
         let index = (cl_output.clone() - cpu_output.clone())
             .indexed_iter()
-            .filter_map(|(i, &x)| if x != 0 { Some(i) } else { None })
-            .next()
+            .find_map(|(i, &x)| if x != 0 { Some(i) } else { None })
             .unwrap();
         panic!("cl={cl_output}, cpu={cpu_output}, index={index:?}");
     }

@@ -37,7 +37,7 @@
 //!
 //! ```
 //! use ndarray::Array4;
-//! use rand::Rng;
+//! use rand::RngExt;
 //! use ocl_convolution::{Convolution, FeatureMap, Params};
 //!
 //! # fn main() -> Result<(), ocl::Error> {
@@ -78,7 +78,7 @@
 //!
 //! ```
 //! use ndarray::Array4;
-//! use rand::Rng;
+//! use rand::RngExt;
 //! use ocl_convolution::{Convolution, I8Params, FeatureMap, Params};
 //!
 //! # fn main() -> Result<(), ocl::Error> {
@@ -112,14 +112,6 @@
 //! ```
 
 #![doc(html_root_url = "https://docs.rs/ocl-convolution/0.4.0")]
-#![warn(missing_debug_implementations, missing_docs, bare_trait_objects)]
-#![warn(clippy::all, clippy::pedantic)]
-#![allow(
-    clippy::missing_errors_doc,
-    clippy::must_use_candidate,
-    clippy::module_name_repetitions,
-    clippy::doc_markdown
-)]
 
 use std::{fmt, marker::PhantomData};
 
@@ -166,6 +158,10 @@ impl ConvElement for i8 {
 
 impl ConvolutionBuilder<f32> {
     /// Creates a new floating-point convolution.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn build(&self, params: Params) -> ocl::Result<Convolution<f32>> {
         Base::new(self, params).map(Convolution)
     }
@@ -173,6 +169,10 @@ impl ConvolutionBuilder<f32> {
 
 impl ConvolutionBuilder<i8> {
     /// Creates a new quantized convolution.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn build(&self, params: I8Params) -> ocl::Result<Convolution<i8>> {
         Base::new(self, params).map(Convolution)
     }
@@ -198,6 +198,10 @@ impl Convolution<f32> {
     /// # Panics
     ///
     /// Panics if the filter `size` is even.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn f32(size: u32) -> ocl::Result<ConvolutionBuilder<f32>> {
         ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 32)], SOURCE)
     }
@@ -227,7 +231,7 @@ impl Convolution<f32> {
 /// `scale` and `bias` may differ for different tensors; these params are usually determined
 /// by *profiling* the corresponding convolutional neural network (see e.g. [this paper]).
 ///
-/// Denote these quantiation params for tensor `T` as `T.scale` and `T.bias`. Denote `S`
+/// Denote these quantization params for tensor `T` as `T.scale` and `T.bias`. Denote `S`
 /// the signal, `F` the filter, `O` the output. Convolution parameters must be set as follows:
 ///
 /// | `I8Params` field | Value     |
@@ -266,6 +270,10 @@ impl Convolution<i8> {
     /// # Panics
     ///
     /// Panics if the filter `size` is even.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn i8(size: u32) -> ocl::Result<ConvolutionBuilder<i8>> {
         ConvolutionBuilder::new(size, &[("KERNEL_TYPE", 8)], SOURCE)
     }
@@ -283,6 +291,10 @@ impl<T: ConvElement> Convolution<T> {
     }
 
     /// Sets convolution parameters.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
         self.0.set_params(params)
     }
@@ -293,6 +305,10 @@ impl<T: ConvElement> Convolution<T> {
     ///
     /// - `filters` must have `MxK_HxK_WxC` layout, where `M` is the number of filters,
     ///   `K_H` and `K_W` are spatial dimensions of a filter, `C` is the number of input channels.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn with_filters<'a>(
         self,
         filters: impl Into<ArrayView4<'a, T>>,
@@ -303,6 +319,10 @@ impl<T: ConvElement> Convolution<T> {
     }
 
     /// Returns the convolution with pinned filter / filter bias memory.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn with_biased_filters<'a>(
         self,
         filters: impl Into<ArrayView4<'a, T>>,
@@ -330,6 +350,10 @@ impl<T: ConvElement> Convolution<T> {
     /// - Panics if `filters` do not have expected spatial dimensions, i.e.,
     ///   `self.size() x self.size()`.
     /// - Panics if the number of input channels differs from number of channels in `filters`.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn compute<'a>(
         &self,
         signal: FeatureMap<'_, T>,
@@ -342,6 +366,10 @@ impl<T: ConvElement> Convolution<T> {
     /// by the provided per-filter biases.
     ///
     /// Parameters, return value and panics are the same as for [`Self::compute()`].
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn compute_with_biases<'a>(
         &self,
         signal: FeatureMap<'_, T>,
@@ -384,16 +412,28 @@ impl<T: ConvElement> FiltersConvolution<T> {
     }
 
     /// Sets convolution parameters.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
         self.0.set_params(params)
     }
 
     /// Pins signal and output memory for this convolution.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn pin(self, signal_shape: FeatureMapShape) -> ocl::Result<PinnedConvolution<T>> {
         self.0.pinned(signal_shape).map(PinnedConvolution)
     }
 
     /// Computes the convolution on the provided signal.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
         self.0.compute(signal)
     }
@@ -431,6 +471,10 @@ impl<T: ConvElement> PinnedConvolution<T> {
     }
 
     /// Sets convolution parameters.
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
         self.0.set_params(params)
     }
@@ -441,6 +485,10 @@ impl<T: ConvElement> PinnedConvolution<T> {
     ///
     /// - Panics if signal dimensions do not agree with the ones provided
     ///   to the [`pin()` method](FiltersConvolution::pin()).
+    ///
+    /// # Errors
+    ///
+    /// Proxies OpenCL initialization errors.
     pub fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
         self.0.compute(signal)
     }

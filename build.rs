@@ -1,3 +1,5 @@
+//! Minimizes the OpenCL shader code so that it occupies less space when embedded into the binary.
+
 use std::{env, fs, path::Path};
 
 fn process_line(mut line: &str) -> Option<String> {
@@ -41,7 +43,7 @@ fn main() {
 
     let mut processed_code = String::new();
     for line in cl_code.lines().filter_map(process_line) {
-        let last_char = processed_code.as_bytes().last().cloned();
+        let last_char = processed_code.as_bytes().last().copied();
         if line.starts_with('#') && last_char.is_some() && last_char != Some(b'\n') {
             processed_code.push('\n');
         }

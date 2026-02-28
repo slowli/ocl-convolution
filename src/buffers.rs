@@ -3,12 +3,12 @@
 use std::{borrow::Cow, convert::TryFrom};
 
 use ndarray::{Array4, ArrayView4};
-use ocl::{flags, prm::Uint3, Buffer, Kernel};
+use ocl::{Buffer, Kernel, flags, prm::Uint3};
 
 use crate::{
+    ConvElement, Params,
     base::Base,
     params::{OutputParams, WithParams},
-    ConvElement, Params,
 };
 
 /// Shape of a [`FeatureMap`].
@@ -152,15 +152,15 @@ pub(crate) struct Filters<T: ConvElement> {
 }
 
 impl<T: ConvElement> Filters<T> {
-    pub fn filter_count(&self) -> u32 {
+    pub(crate) fn filter_count(&self) -> u32 {
         self.filter_count
     }
 
-    pub fn channel_count(&self) -> u32 {
+    pub(crate) fn channel_count(&self) -> u32 {
         self.channel_count
     }
 
-    pub fn new<U: WithParams>(
+    pub(crate) fn new<U: WithParams>(
         filters: &ArrayView4<'_, T>,
         biases: Option<&[T::Acc]>,
         conv: &Base<U>,
@@ -217,7 +217,7 @@ impl<T: ConvElement> Filters<T> {
         })
     }
 
-    pub fn pass_as_arguments(&self, kernel: &Kernel) -> ocl::Result<()> {
+    pub(crate) fn pass_as_arguments(&self, kernel: &Kernel) -> ocl::Result<()> {
         kernel.set_arg("filters", &self.inner)?;
         if let Some(ref biases) = self.biases {
             kernel.set_arg("filter_biases", biases)?;
@@ -236,7 +236,7 @@ pub(crate) struct InputAndOutput<T: ConvElement> {
 }
 
 impl<T: ConvElement> InputAndOutput<T> {
-    pub fn new<U: WithParams>(
+    pub(crate) fn new<U: WithParams>(
         signal_shape: FeatureMapShape,
         filter_count: u32,
         conv: &Base<U>,
@@ -282,7 +282,7 @@ impl<T: ConvElement> InputAndOutput<T> {
         })
     }
 
-    pub fn write_signal(&self, signal: FeatureMap<'_, T>) -> ocl::Result<()> {
+    pub(crate) fn write_signal(&self, signal: FeatureMap<'_, T>) -> ocl::Result<()> {
         let signal = signal.to_nhwc();
         let signal_slice = signal.as_slice().map_or_else(
             || Cow::Owned(signal.iter().copied().collect()),
@@ -291,11 +291,11 @@ impl<T: ConvElement> InputAndOutput<T> {
         self.signal_buffer.write(signal_slice.as_ref()).enq()
     }
 
-    pub fn pass_as_arguments(&self, kernel: &Kernel) -> ocl::Result<()> {
+    pub(crate) fn pass_as_arguments(&self, kernel: &Kernel) -> ocl::Result<()> {
         kernel.set_arg("signal_dims", self.signal_dims)
     }
 
-    pub fn execute(&self, kernel: &Kernel, out_layout: Layout) -> ocl::Result<Array4<T>> {
+    pub(crate) fn execute(&self, kernel: &Kernel, out_layout: Layout) -> ocl::Result<Array4<T>> {
         let s = self.output_shape;
         kernel.set_arg(
             "out_params",

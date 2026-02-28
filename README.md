@@ -2,7 +2,7 @@
 
 [![Build status](https://github.com/slowli/ocl-convolution/actions/workflows/ci.yml/badge.svg)](https://github.com/slowli/ocl-convolution/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%2FApache--2.0-blue)](https://github.com/slowli/ocl-convolution#license)
-![rust 1.75+ required](https://img.shields.io/badge/rust-1.75+-blue.svg?label=Required%20Rust) 
+![rust 1.85+ required](https://img.shields.io/badge/rust-1.85+-blue.svg?label=Required%20Rust) 
 
 **Documentation:** [![Docs.rs](https://docs.rs/ocl-convolution/badge.svg)](https://docs.rs/ocl-convolution/)
 [![crate docs (master)](https://img.shields.io/badge/master-yellow.svg?label=docs)](https://slowli.github.io/ocl-convolution/ocl_convolution/) 
@@ -29,7 +29,7 @@ Basic floating-point convolution can be implemented as follows:
 
 ```rust
 use ndarray::Array4;
-use rand::Rng;
+use rand::RngExt;
 use ocl_convolution::{Convolution, FeatureMap, Params};
 
 let convolution = Convolution::f32(3)?.build(Params {

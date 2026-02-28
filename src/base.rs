@@ -2,14 +2,14 @@ use std::{convert::TryFrom, marker::PhantomData, sync::Mutex};
 
 use ndarray::{Array4, ArrayView4};
 use ocl::{
-    builders::KernelBuilder, prm::Uint3, Buffer, Context, Device, Kernel, Platform, ProQue,
-    Program, Queue,
+    Buffer, Context, Device, Kernel, Platform, ProQue, Program, Queue, builders::KernelBuilder,
+    prm::Uint3,
 };
 
 use crate::{
+    ConvElement,
     buffers::{FeatureMap, FeatureMapShape, Filters, InputAndOutput, Pinned},
     params::{OutputParams, Params, WithParams},
-    ConvElement,
 };
 
 /// Convolution builder. The same builder can be used to create multiple `Convolution`s
@@ -105,25 +105,25 @@ pub(crate) struct Base<T: WithParams> {
 }
 
 impl<T: WithParams> Base<T> {
-    pub fn kernel(&self) -> &Kernel {
+    pub(crate) fn kernel(&self) -> &Kernel {
         &self.kernel
     }
 
-    pub fn queue(&self) -> &Queue {
+    pub(crate) fn queue(&self) -> &Queue {
         self.kernel
             .default_queue()
             .expect("kernel must come with a pre-configured queue")
     }
 
-    pub fn size(&self) -> u32 {
+    pub(crate) fn size(&self) -> u32 {
         self.size
     }
 
-    pub fn params(&self) -> T::Params {
+    pub(crate) fn params(&self) -> T::Params {
         self.params
     }
 
-    pub fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
+    pub(crate) fn set_params(&mut self, params: T::Params) -> ocl::Result<()> {
         self.params = params;
         self.kernel
             .set_arg("params", Into::<T::ClParams>::into(params))
@@ -131,7 +131,7 @@ impl<T: WithParams> Base<T> {
 }
 
 impl<T: ConvElement> Base<PhantomData<T>> {
-    pub fn new(builder: &ConvolutionBuilder<T>, params: T::Params) -> ocl::Result<Self> {
+    pub(crate) fn new(builder: &ConvolutionBuilder<T>, params: T::Params) -> ocl::Result<Self> {
         let kernel = builder
             .kernel_builder()
             .arg_named("output", None::<&Buffer<T>>)
@@ -151,7 +151,7 @@ impl<T: ConvElement> Base<PhantomData<T>> {
         })
     }
 
-    pub fn with_filters(
+    pub(crate) fn with_filters(
         self,
         filters: &ArrayView4<'_, T>,
         filter_biases: Option<&[T::Acc]>,
@@ -166,7 +166,7 @@ impl<T: ConvElement> Base<PhantomData<T>> {
         })
     }
 
-    pub fn compute(
+    pub(crate) fn compute(
         &self,
         signal: FeatureMap<'_, T>,
         filters: &ArrayView4<'_, T>,
@@ -192,7 +192,7 @@ impl<T: ConvElement> Base<PhantomData<T>> {
 }
 
 impl<T: ConvElement> Base<Filters<T>> {
-    pub fn pinned(self, signal_shape: FeatureMapShape) -> ocl::Result<Base<Pinned<T>>> {
+    pub(crate) fn pinned(self, signal_shape: FeatureMapShape) -> ocl::Result<Base<Pinned<T>>> {
         let io = create_io(signal_shape, &self.buffers, &self)?;
         Ok(Base {
             size: self.size,
@@ -203,7 +203,7 @@ impl<T: ConvElement> Base<Filters<T>> {
         })
     }
 
-    pub fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
+    pub(crate) fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
         let io = create_io(signal.shape(), &self.buffers, self)?;
         io.write_signal(signal)?;
         io.execute(&self.kernel, signal.layout())
@@ -211,7 +211,7 @@ impl<T: ConvElement> Base<Filters<T>> {
 }
 
 impl<T: ConvElement> Base<Pinned<T>> {
-    pub fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
+    pub(crate) fn compute(&self, signal: FeatureMap<'_, T>) -> ocl::Result<Array4<T>> {
         assert_eq!(
             signal.shape(),
             self.buffers.signal_shape,

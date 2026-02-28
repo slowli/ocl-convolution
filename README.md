@@ -29,7 +29,7 @@ Basic floating-point convolution can be implemented as follows:
 
 ```rust
 use ndarray::Array4;
-use rand::Rng;
+use rand::RngExt;
 use ocl_convolution::{Convolution, FeatureMap, Params};
 
 let convolution = Convolution::f32(3)?.build(Params {

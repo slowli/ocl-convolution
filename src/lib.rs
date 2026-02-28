@@ -37,7 +37,7 @@
 //!
 //! ```
 //! use ndarray::Array4;
-//! use rand::Rng;
+//! use rand::RngExt;
 //! use ocl_convolution::{Convolution, FeatureMap, Params};
 //!
 //! # fn main() -> Result<(), ocl::Error> {
@@ -78,7 +78,7 @@
 //!
 //! ```
 //! use ndarray::Array4;
-//! use rand::Rng;
+//! use rand::RngExt;
 //! use ocl_convolution::{Convolution, I8Params, FeatureMap, Params};
 //!
 //! # fn main() -> Result<(), ocl::Error> {
@@ -231,7 +231,7 @@ impl Convolution<f32> {
 /// `scale` and `bias` may differ for different tensors; these params are usually determined
 /// by *profiling* the corresponding convolutional neural network (see e.g. [this paper]).
 ///
-/// Denote these quantiation params for tensor `T` as `T.scale` and `T.bias`. Denote `S`
+/// Denote these quantization params for tensor `T` as `T.scale` and `T.bias`. Denote `S`
 /// the signal, `F` the filter, `O` the output. Convolution parameters must be set as follows:
 ///
 /// | `I8Params` field | Value     |

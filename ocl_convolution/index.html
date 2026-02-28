@@ -1,0 +1,87 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="OpenCL-accelerated 2D convolutions."><title>ocl_convolution - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="ocl_convolution" data-themes="" data-resource-suffix="" data-rustdoc-version="1.93.0-nightly (bd3ac0330 2025-11-01)" data-channel="nightly" data-search-js="search-5c29b3b5.js" data-stringdex-js="stringdex-c3e638e9.js" data-settings-js="settings-c38705f0.js" ><script src="../static.files/storage-e2aeef58.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-ce535bd0.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate ocl_convolution</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../ocl_convolution/index.html">ocl_<wbr>convolution</a><span class="version">0.4.0</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#features" title="Features">Features</a></li><li><a href="#implementation-details" title="Implementation details">Implementation details</a></li><li><a href="#examples" title="Examples">Examples</a><ul><li><a href="#floating-point-convolution" title="Floating-point convolution">Floating-point convolution</a></li><li><a href="#quantized-convolution" title="Quantized convolution">Quantized convolution</a></li></ul></li></ul><h3><a href="#structs">Crate Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#traits" title="Traits">Traits</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><h1>Crate <span>ocl_<wbr>convolution</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/ocl_convolution/lib.rs.html#1-498">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>OpenCL-accelerated 2D convolutions.</p>
+<p><a href="https://en.wikipedia.org/wiki/Convolution">Convolution</a> is a fundamental building block in signal processing. This crate is focused
+on 2D convolutions (i.e., the signal is a still image) in the context of <a href="https://en.wikipedia.org/wiki/Deep_learning">deep learning</a>
+(more precisely, <a href="https://en.wikipedia.org/wiki/Convolutional_neural_network">convolutional neural networks</a>).
+The second requirement means that the convolution filter may contain many (order of hundreds)
+filters; and the input may contain many channels (order of hundreds or thousands), rather
+than traditional 3 or 4. Computing such convolutions is computationally heavy and can be
+effectively accelerated with the help of <a href="https://www.khronos.org/opencl/">OpenCL</a>.</p>
+<h2 id="features"><a class="doc-anchor" href="#features">§</a>Features</h2>
+<p>The crate implements convolutions on two numerical formats:</p>
+<ul>
+<li>Single-precision floats (<code>f32</code>)</li>
+<li>Signed 8-bit integers with 32-bit multiply-add accumulator (this format is frequently denoted
+<code>int8/32</code> in deep learning literature). Quantization parameters are applied uniformly
+to the entire layer.</li>
+</ul>
+<p>For both cases, dilated or grouped convolutions are supported.</p>
+<h2 id="implementation-details"><a class="doc-anchor" href="#implementation-details">§</a>Implementation details</h2>
+<p>The implementation uses output-stationary workflow (see, e.g., <a href="https://dl.acm.org/citation.cfm?id=3001177">this paper</a> for
+the definition); that is, each element of the output tensor is computed in a single run
+of the OpenCL kernel. This minimizes memory overhead, but may not be the fastest algorithm.</p>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2><h3 id="floating-point-convolution"><a class="doc-anchor" href="#floating-point-convolution">§</a>Floating-point convolution</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>ndarray::Array4;
+<span class="kw">use </span>rand::RngExt;
+<span class="kw">use </span>ocl_convolution::{Convolution, FeatureMap, Params};
+
+<span class="kw">let </span>convolution = Convolution::f32(<span class="number">3</span>)<span class="question-mark">?</span>.build(Params {
+    strides: [<span class="number">1</span>, <span class="number">1</span>],
+    pads: [<span class="number">0</span>; <span class="number">4</span>],
+    dilation: [<span class="number">1</span>, <span class="number">1</span>],
+    groups: <span class="number">1</span>,
+})<span class="question-mark">?</span>;
+
+<span class="comment">// Generate random signal with 6x6 spatial dims and 3 channels.
+</span><span class="kw">let </span><span class="kw-2">mut </span>rng = rand::rng();
+<span class="kw">let </span>signal = Array4::from_shape_fn([<span class="number">1</span>, <span class="number">6</span>, <span class="number">6</span>, <span class="number">3</span>], |<span class="kw">_</span>| rng.random_range(-<span class="number">1.0</span>..=<span class="number">1.0</span>));
+<span class="comment">// Construct two 3x3 spatial filters.
+</span><span class="kw">let </span>filters = Array4::from_shape_fn([<span class="number">2</span>, <span class="number">3</span>, <span class="number">3</span>, <span class="number">3</span>], |<span class="kw">_</span>| rng.random_range(-<span class="number">1.0</span>..=<span class="number">1.0</span>));
+<span class="comment">// Perform the convolution. The output must have 4x4 spatial dims
+// and contain 2 channels (1 per each filter). The output layout will
+// be the same as in the signal.
+</span><span class="kw">let </span>output = convolution.compute(
+    <span class="comment">// `FeatureMap` wraps `ArrayView4` with information about
+    // memory layout (which is "channels-last" / NHWC in this case).
+    </span>FeatureMap::nhwc(<span class="kw-2">&amp;</span>signal),
+    <span class="kw-2">&amp;</span>filters,
+)<span class="question-mark">?</span>;
+<span class="macro">assert_eq!</span>(output.shape(), [<span class="number">1</span>, <span class="number">4</span>, <span class="number">4</span>, <span class="number">2</span>]);
+
+<span class="comment">// For increased efficiency, we may pin filter memory.
+// This is especially useful when the same filters are convolved
+// with multiple signals.
+</span><span class="kw">let </span>convolution = convolution.with_filters(<span class="kw-2">&amp;</span>filters)<span class="question-mark">?</span>;
+<span class="kw">let </span>new_output = convolution.compute(FeatureMap::nhwc(<span class="kw-2">&amp;</span>signal))<span class="question-mark">?</span>;
+<span class="macro">assert_eq!</span>(output, new_output);</code></pre></div><h3 id="quantized-convolution"><a class="doc-anchor" href="#quantized-convolution">§</a>Quantized convolution</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>ndarray::Array4;
+<span class="kw">use </span>rand::RngExt;
+<span class="kw">use </span>ocl_convolution::{Convolution, I8Params, FeatureMap, Params};
+
+<span class="kw">const </span>BIT_SHIFT: u8 = <span class="number">16</span>;
+<span class="kw">let </span>params = I8Params {
+    common: Params::default(),
+    <span class="comment">// These params are found by profiling; here, they are
+    // chosen randomly.
+    </span>bit_shift: BIT_SHIFT,
+    scale: I8Params::convert_scale(BIT_SHIFT, <span class="number">0.1</span>),
+    output_bias: -<span class="number">10</span>,
+    signal_bias: <span class="number">20</span>,
+    filter_bias: -<span class="number">5</span>,
+};
+<span class="kw">let </span>convolution = Convolution::i8(<span class="number">3</span>)<span class="question-mark">?</span>.build(params)<span class="question-mark">?</span>;
+
+<span class="comment">// Generate random signal with 6x6 spatial dims and 3 channels.
+</span><span class="kw">let </span><span class="kw-2">mut </span>rng = rand::rng();
+<span class="kw">let </span>signal = Array4::from_shape_fn([<span class="number">1</span>, <span class="number">6</span>, <span class="number">6</span>, <span class="number">3</span>], |<span class="kw">_</span>| rng.random_range(-<span class="number">127</span>..=<span class="number">127</span>));
+<span class="comment">// Construct two 3x3 spatial filters.
+</span><span class="kw">let </span>filters = Array4::from_shape_fn([<span class="number">2</span>, <span class="number">3</span>, <span class="number">3</span>, <span class="number">3</span>], |<span class="kw">_</span>| rng.random_range(-<span class="number">127</span>..=<span class="number">127</span>));
+<span class="comment">// Perform the convolution. The output must have 4x4 spatial dims
+// and contain 2 channels (1 per each filter).
+</span><span class="kw">let </span>output = convolution.compute(
+    FeatureMap::nhwc(<span class="kw-2">&amp;</span>signal),
+    <span class="kw-2">&amp;</span>filters,
+)<span class="question-mark">?</span>;
+<span class="macro">assert_eq!</span>(output.shape(), [<span class="number">1</span>, <span class="number">4</span>, <span class="number">4</span>, <span class="number">2</span>]);</code></pre></div></div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.Convolution.html" title="struct ocl_convolution::Convolution">Convolution</a></dt><dd>Convolution without pinned memory.</dd><dt><a class="struct" href="struct.ConvolutionBuilder.html" title="struct ocl_convolution::ConvolutionBuilder">Convolution<wbr>Builder</a></dt><dd>Convolution builder. The same builder can be used to create multiple <code>Convolution</code>s
+which share the same spatial size.</dd><dt><a class="struct" href="struct.FeatureMap.html" title="struct ocl_convolution::FeatureMap">Feature<wbr>Map</a></dt><dd>Feature map, i.e., a signal or output of the convolution operation.</dd><dt><a class="struct" href="struct.FeatureMapShape.html" title="struct ocl_convolution::FeatureMapShape">Feature<wbr>MapShape</a></dt><dd>Shape of a <a href="struct.FeatureMap.html" title="struct ocl_convolution::FeatureMap"><code>FeatureMap</code></a>.</dd><dt><a class="struct" href="struct.FiltersConvolution.html" title="struct ocl_convolution::FiltersConvolution">Filters<wbr>Convolution</a></dt><dd>Convolution with pinned filters memory. Pinning memory increases efficiency at the cost
+of making the convolution less flexible.</dd><dt><a class="struct" href="struct.I8Params.html" title="struct ocl_convolution::I8Params">I8Params</a></dt><dd>Params for the quantized convolution.</dd><dt><a class="struct" href="struct.Params.html" title="struct ocl_convolution::Params">Params</a></dt><dd>General convolution parameters.</dd><dt><a class="struct" href="struct.PinnedConvolution.html" title="struct ocl_convolution::PinnedConvolution">Pinned<wbr>Convolution</a></dt><dd>Convolution with pinned memory for filters, signal and output. Pinning memory increases
+efficiency at the cost of making the convolution less flexible.</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.Layout.html" title="enum ocl_convolution::Layout">Layout</a></dt><dd>Memory layout of a <a href="struct.FeatureMap.html" title="struct ocl_convolution::FeatureMap"><code>FeatureMap</code></a>.</dd></dl><h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2><dl class="item-table"><dt><a class="trait" href="trait.ConvElement.html" title="trait ocl_convolution::ConvElement">Conv<wbr>Element</a></dt><dd>Supported element types for convolutions.</dd></dl></section></div></main></body></html>
